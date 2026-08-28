@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.yvw.api import account_ids_in
-from custom_components.yvw.auth import build_code_form
+from custom_components.yvw.auth import build_code_form, find_client_redirect
 from custom_components.yvw.exceptions import YvwApiError, YvwInvalidCode
 
 CODE_PAGE = """
@@ -214,3 +214,88 @@ async def test_no_verification_step_skips_the_page_fetch(monkeypatch) -> None:
     assert mfa_type is None
     assert session.gets == []
     assert login.code_page_url is None
+
+
+FRONTDOOR_BOUNCE = (
+    '<html><head><title>Redirect</title></head><body>'
+    '<script>window.location.replace('
+    "'https://myaccount.yvw.com.au/myaccount/s/?amp;x=1');</script>"
+    "</body></html>"
+)
+
+META_BOUNCE = (
+    '<html><head><meta http-equiv="Refresh" '
+    'content="0; url=/myaccount/apex/MALoginFlowVFPage?retURL=%2F"></head></html>'
+)
+
+
+def test_a_javascript_bounce_is_recognised() -> None:
+    """frontdoor.jsp redirects from script, not with an HTTP status."""
+    assert find_client_redirect(FRONTDOOR_BOUNCE) == (
+        "https://myaccount.yvw.com.au/myaccount/s/?amp;x=1"
+    )
+
+
+def test_a_meta_refresh_is_recognised() -> None:
+    assert find_client_redirect(META_BOUNCE) == (
+        "/myaccount/apex/MALoginFlowVFPage?retURL=%2F"
+    )
+
+
+def test_a_page_with_no_bounce_returns_nothing() -> None:
+    assert find_client_redirect(CODE_PAGE) is None
+
+
+class HopSession(FakeSession):
+    """Serve a different body per request, like a redirect chain."""
+
+    def __init__(self, bodies: list[str], cookies: list[str] | None = None) -> None:
+        super().__init__()
+        self._bodies = bodies
+        self._cookies = cookies or []
+
+    def get(self, url, **kwargs):
+        self.gets.append(url)
+        body = self._bodies[min(len(self.gets) - 1, len(self._bodies) - 1)]
+        return FakeResponse(body, url=url)
+
+    @property
+    def cookie_jar(self):
+        class C:
+            def __init__(self, key):
+                self.key = key
+                self.value = "v"
+
+        return [C(name) for name in self._cookies]
+
+
+async def test_the_frontdoor_bounce_is_followed_to_the_code_page(monkeypatch) -> None:
+    """This is what makes the portal send the code.
+
+    Stopping at the bounce page leaves the user staring at a code box for a code
+    that was never sent.
+    """
+    session = HopSession([FRONTDOOR_BOUNCE, META_BOUNCE, CODE_PAGE], cookies=["sid"])
+    login, mfa_type = await _login_with(monkeypatch, session)
+
+    assert mfa_type == "SMS"
+    assert len(session.gets) == 3
+    assert "MALoginFlowVFPage" in session.gets[-1]
+
+
+async def test_a_signed_in_session_without_a_flow_needs_no_code(monkeypatch) -> None:
+    """A trusted device may skip verification entirely."""
+    session = HopSession(["<html>no bounce, no code fields</html>"], cookies=["sid"])
+    login, mfa_type = await _login_with(monkeypatch, session)
+
+    assert mfa_type is None
+    assert login.code_page_url is None
+
+
+async def test_a_chain_that_stops_short_is_an_error(monkeypatch) -> None:
+    """Never present a code box when nothing was sent."""
+    from custom_components.yvw.exceptions import YvwApiError as _ApiError
+
+    session = HopSession(["<html>dead end</html>"], cookies=[])
+    with pytest.raises(_ApiError, match="without reaching"):
+        await _login_with(monkeypatch, session)

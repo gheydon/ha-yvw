@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from html import unescape
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
 import aiohttp
@@ -58,6 +59,24 @@ _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
 CODE_LENGTH = len(_DIGIT_ORDER)
 
+# frontdoor.jsp swaps the session id in its query for real cookies and then
+# bounces onward from JavaScript rather than with an HTTP redirect, so the
+# client has to follow it by hand.
+_CLIENT_REDIRECT_RES = (
+    re.compile(r"""window\.location\.replace\(\s*['"]([^'"]+)['"]""", re.IGNORECASE),
+    re.compile(r"""window\.location(?:\.href)?\s*=\s*['"]([^'"]+)['"]""", re.IGNORECASE),
+    # \burl guards against matching the url= inside a retURL= parameter, and the
+    # lazy prefix keeps it on the first match rather than the last.
+    re.compile(
+        r"""<meta[^>]+http-equiv=['"]refresh['"][^>]*"""
+        r"""content=['"][^'"]*?\burl\s*=\s*([^'"]+)['"]""",
+        re.IGNORECASE,
+    ),
+)
+
+# Enough to cover frontdoor bouncing into the community and on to the flow.
+_MAX_CLIENT_REDIRECTS = 6
+
 
 def describe_url(url: str | None) -> str:
     """Describe a URL for the log without leaking anything sensitive.
@@ -73,6 +92,15 @@ def describe_url(url: str | None) -> str:
     masked = "&".join(f"{name}=<{len(value)} chars>" for name, value in params)
     location = parts.path if not parts.netloc else f"{parts.netloc}{parts.path}"
     return f"{location}?{masked}" if masked else location
+
+
+def find_client_redirect(html: str) -> str | None:
+    """Return the target of a JavaScript or meta redirect, if the page has one."""
+    for pattern in _CLIENT_REDIRECT_RES:
+        match = pattern.search(html)
+        if match:
+            return unescape(match.group(1))
+    return None
 
 
 def _parse_inputs(html: str) -> list[dict[str, str]]:
@@ -214,7 +242,10 @@ class YvwLogin:
         # that the eventual postback has to echo back, so the page is kept
         # rather than re-fetched, which would invalidate it and send a second
         # code.
-        await self._async_load_code_page()
+        if not await self._async_load_code_page():
+            # The portal completed the sign-in without asking for a code.
+            self._code_page_url = None
+            return None
         return result.get("mfaType")
 
     async def async_resend_code(self) -> None:
@@ -282,28 +313,59 @@ class YvwLogin:
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
 
-    async def _async_load_code_page(self) -> None:
-        """Fetch the verification page, which is what sends the code."""
+    async def _async_load_code_page(self) -> bool:
+        """Follow the sign-in through to the verification page.
+
+        Returns True once the page carrying the code fields is reached, which is
+        also what makes the portal send the code. Returns False if the session
+        came out fully signed in without a verification step.
+
+        The hops matter: doLogin hands back a frontdoor.jsp URL that trades its
+        session id for cookies and then bounces onward from JavaScript, and the
+        community only redirects to the verification flow once those cookies
+        exist. Following just the first hop lands on the bounce page and no code
+        is ever sent.
+        """
         assert self._code_page_url is not None
-        html, final_url, status = await self._async_get(self._code_page_url)
+        url = self._code_page_url
 
-        reached_the_flow = bool(_DIGIT_FIELD_RE.search(html))
-        _LOGGER.debug(
-            "Verification page: status=%s landed_on=%s bytes=%s has_code_fields=%s "
-            "cookies=%s",
-            status,
-            final_url,
-            len(html),
-            reached_the_flow,
-            sorted({cookie.key for cookie in self._session.cookie_jar}),
-        )
+        for hop in range(_MAX_CLIENT_REDIRECTS):
+            html, final_url, status = await self._async_get(url)
+            has_code_fields = bool(_DIGIT_FIELD_RE.search(html))
+            redirect = None if has_code_fields else find_client_redirect(html)
 
-        if not reached_the_flow:
-            # Without reaching the flow page the portal never sends anything, so
-            # say so rather than presenting a code box that can never be filled.
-            raise YvwApiError(
-                "The portal did not serve the verification page "
-                f"(ended on {final_url} with status {status}), so no code was sent"
+            _LOGGER.debug(
+                "Sign-in hop %s: status=%s landed_on=%s bytes=%s has_code_fields=%s "
+                "next=%s cookies=%s",
+                hop,
+                status,
+                describe_url(final_url),
+                len(html),
+                has_code_fields,
+                describe_url(redirect),
+                sorted({cookie.key for cookie in self._session.cookie_jar}),
             )
 
-        self._code_page_html = html
+            if has_code_fields:
+                self._code_page_html = html
+                self._code_page_url = final_url
+                return True
+
+            if redirect is not None:
+                url = urljoin(final_url, redirect)
+                continue
+
+            # No onward hop. Either the portal signed us straight in, or the
+            # chain stopped somewhere unexpected.
+            if read_cookie(self._session, "sid"):
+                _LOGGER.debug("Signed in without a verification step")
+                self._code_page_html = None
+                return False
+
+            raise YvwApiError(
+                "The sign-in stopped at "
+                f"{describe_url(final_url)} (status {status}) without reaching "
+                "the verification page, so no code was sent"
+            )
+
+        raise YvwApiError("The sign-in redirected too many times to follow")
