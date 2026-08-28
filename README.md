@@ -163,6 +163,13 @@ It carries `detected_by` (`poll` or `keepalive`), `session_age`, `last_contact`,
 and the same identifying fields. Home Assistant also raises its own repair and
 re-authentication prompt at the same moment.
 
+Every keep-alive attempt fires `yvw_keepalive` with its `outcome` — `ok`,
+`failed` for something transient, or `expired` — along with `idle_minutes`,
+`next_minutes`, `session_age`, `calibrating` and `measurement`. That is enough
+to follow a timeout measurement from a notification rather than a log. A wake-up
+that is skipped because a poll has already touched the portal fires nothing:
+nothing was asked of it, so there is no outcome to report.
+
 ## Keeping the session alive
 
 The portal has no API keys and no OAuth, and it sends a verification code on

@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
     EVENT_AUTH_FAILED,
+    EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     KEEPALIVE_JITTER,
     MAX_HISTORY_DAYS,
@@ -228,12 +229,14 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self.async_stop_keepalive()
             if self.calibrating:
                 await self._async_conclude_calibration(idle_minutes)
+            self._async_fire_keepalive("expired", idle_minutes)
             self._async_fire_auth_failed("keepalive")
             self.config_entry.async_start_reauth(self.hass)
             return
         except YvwError as err:
             # A transient failure is not worth escalating; the next ping retries.
             _LOGGER.debug("Keep-alive ping failed: %s", err)
+            self._async_fire_keepalive("failed", idle_minutes, error=str(err))
         else:
             if self.calibrating:
                 await self._probe.async_record_survived(
@@ -257,6 +260,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                     self._session_age(),
                     await self.api.async_probe_session_time(),
                 )
+            self._async_fire_keepalive("ok", idle_minutes)
 
         self._async_schedule_keepalive()
 
@@ -334,6 +338,33 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._async_fire_new_readings(added)
 
         return self._summarise(readings)
+
+    @callback
+    def _async_fire_keepalive(
+        self, outcome: str, idle_minutes: int, error: str | None = None
+    ) -> None:
+        """Announce the result of a keep-alive attempt.
+
+        Fired whether the ping worked, failed transiently, or found the session
+        gone, so an automation can report each one without reading a log. Not
+        fired when a wake-up is skipped because a poll already touched the
+        portal — nothing was asked of it, so there is no outcome to report.
+        """
+        self.hass.bus.async_fire(
+            EVENT_KEEPALIVE,
+            {
+                "entry_id": self.config_entry.entry_id,
+                "account_id": self.account_id,
+                "address": self.address,
+                "outcome": outcome,
+                "idle_minutes": idle_minutes,
+                "next_minutes": round(self.keepalive_interval.total_seconds() / 60),
+                "session_age": str(self._session_age()),
+                "calibrating": self.calibrating,
+                "measurement": self.probe_state.summary,
+                "error": error,
+            },
+        )
 
     @callback
     def _async_fire_auth_failed(self, detected_by: str) -> None:

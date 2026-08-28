@@ -27,6 +27,7 @@ from custom_components.yvw.const import (
     CONF_SID,
     DOMAIN,
     EVENT_AUTH_FAILED,
+    EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     MAX_KEEPALIVE_MINUTES,
 )
@@ -359,3 +360,54 @@ async def test_calibration_does_not_jitter_the_interval(
         coordinator._async_schedule_keepalive()
 
     assert delays[0] == 20 * 60
+
+
+async def test_a_successful_ping_reports_its_outcome(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Every attempt should be followable without reading a log."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=11)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["outcome"] == "ok"
+    assert events[0].data["idle_minutes"] == 11
+    assert events[0].data["next_minutes"] == 10
+
+
+async def test_an_expired_session_reports_its_outcome(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """The last message of a calibration run is the one that matters."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    api = StubApi()
+    api.async_ping = _raise_auth_error
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=12)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert [e.data["outcome"] for e in events] == ["expired"]
+    assert events[0].data["idle_minutes"] == 12
+
+
+async def test_a_skipped_wakeup_reports_nothing(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Nothing was asked of the portal, so there is no outcome to report."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=2)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert events == []

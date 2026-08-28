@@ -141,3 +141,7 @@ EVENT_NEW_READINGS = f"{DOMAIN}_new_readings"
 # Fired when the portal session lapses. Re-authenticating needs a person and an
 # SMS code, so it is worth being able to notify rather than waiting to notice.
 EVENT_AUTH_FAILED = f"{DOMAIN}_auth_failed"
+
+# Fired after every keep-alive attempt, whatever came of it, so the run can be
+# followed without reading a log.
+EVENT_KEEPALIVE = f"{DOMAIN}_keepalive"
