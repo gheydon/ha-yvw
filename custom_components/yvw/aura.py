@@ -257,6 +257,13 @@ def extract_return_value(parsed: dict[str, Any]) -> Any:
     return return_value
 
 
+def _is_login_bounce(err: aiohttp.TooManyRedirects) -> bool:
+    """Return whether a redirect loop is the portal demanding a sign-in."""
+    urls = [str(err.request_info.url)] if err.request_info else []
+    urls += [str(response.url) for response in (err.history or ())]
+    return any("/login" in url for url in urls)
+
+
 def read_cookie(session: aiohttp.ClientSession, name: str) -> str | None:
     """Return a cookie's value from the session's jar."""
     for cookie in session.cookie_jar:
@@ -286,6 +293,17 @@ async def async_load_page_context(
                     raise YvwAuthError("Session expired: redirected to the login page")
                 html = await response.text()
                 final_url = str(response.url)
+        except aiohttp.TooManyRedirects as err:
+            # An expired session does not answer with a tidy redirect to the
+            # login page: the portal bounces between the page and the login
+            # screen until aiohttp gives up. Read as a transport fault it looks
+            # like the site being unreachable, and the user is never asked to
+            # sign in again.
+            if _is_login_bounce(err):
+                raise YvwAuthError(
+                    "Session expired: the portal keeps redirecting to the login page"
+                ) from err
+            raise YvwCannotConnect(f"The portal redirected in a loop: {err}") from err
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
 

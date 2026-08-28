@@ -7,6 +7,7 @@ assuming only one of them breaks sign-in entirely.
 from __future__ import annotations
 
 import pytest
+from multidict import CIMultiDict
 
 from custom_components.yvw.aura import (
     extract_descriptor,
@@ -175,3 +176,49 @@ async def test_a_page_that_never_settles_is_an_error() -> None:
     session = _Session([BOUNCE_PAGE])
     with pytest.raises(YvwApiError, match="redirected too many times"):
         await async_load_page_context(session, "https://myaccount.yvw.com.au/myaccount/s/")
+
+
+def _redirect_loop(final_url: str) -> Exception:
+    """Build the error aiohttp raises when a page bounces endlessly."""
+    import aiohttp
+    from yarl import URL
+
+    info = aiohttp.RequestInfo(
+        url=URL(final_url), method="GET", headers=CIMultiDict(), real_url=URL(final_url)
+    )
+    return aiohttp.TooManyRedirects(info, ())
+
+
+async def test_an_expired_session_is_not_mistaken_for_a_network_fault() -> None:
+    """A lapsed session bounces between the page and the login screen.
+
+    Reported as unreachable, it would retry forever and never ask the user to
+    sign in again.
+    """
+    from custom_components.yvw.aura import async_load_page_context
+
+    class Bouncing:
+        cookie_jar: list = []
+
+        def get(self, url, **kwargs):
+            raise _redirect_loop(
+                "https://myaccount.yvw.com.au/myaccount/s/login?ec=302&startURL=/s/usage"
+            )
+
+    with pytest.raises(YvwAuthError):
+        await async_load_page_context(Bouncing(), "https://myaccount.yvw.com.au/myaccount/s/")
+
+
+async def test_an_unrelated_redirect_loop_is_still_a_connection_problem() -> None:
+    """Only a bounce to the login screen means the session is the problem."""
+    from custom_components.yvw.aura import async_load_page_context
+    from custom_components.yvw.exceptions import YvwCannotConnect
+
+    class Bouncing:
+        cookie_jar: list = []
+
+        def get(self, url, **kwargs):
+            raise _redirect_loop("https://myaccount.yvw.com.au/myaccount/s/somewhere")
+
+    with pytest.raises(YvwCannotConnect):
+        await async_load_page_context(Bouncing(), "https://myaccount.yvw.com.au/myaccount/s/")
