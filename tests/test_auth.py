@@ -86,3 +86,120 @@ def test_repeated_accounts_are_listed_once() -> None:
 def test_an_opaque_payload_yields_nothing() -> None:
     """Better to abort setup than to invent an account id."""
     assert account_ids_in("not json at all") == []
+
+
+class FakeResponse:
+    """Minimal stand-in for an aiohttp response."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def text(self) -> str:
+        return self._text
+
+    async def read(self) -> bytes:
+        return self._text.encode()
+
+
+class FakeSession:
+    """Record what the login flow asks the portal for."""
+
+    def __init__(self, get_body: str = CODE_PAGE, post_body: str = "") -> None:
+        self.gets: list[str] = []
+        self.posts: list[tuple[str, dict]] = []
+        self._get_body = get_body
+        self._post_body = post_body
+
+    def get(self, url, **kwargs):
+        self.gets.append(url)
+        return FakeResponse(self._get_body)
+
+    def post(self, url, **kwargs):
+        self.posts.append((url, kwargs.get("data") or {}))
+        return FakeResponse(self._post_body)
+
+
+DO_LOGIN_OK = {"mfaType": "SMS", "pageUrl": "/myaccount/apex/MALoginFlowVFPage?retURL=%2F"}
+
+
+async def _login_with(monkeypatch, session, result=DO_LOGIN_OK):
+    from custom_components.yvw import auth as auth_module
+
+    class Ctx:
+        context = {"fwuid": "x", "app": "siteforce:loginApp2", "loaded": {}}
+        token = ""
+
+    async def fake_context(*args, **kwargs):
+        return Ctx()
+
+    monkeypatch.setattr(auth_module, "async_load_page_context", fake_context)
+    monkeypatch.setattr(auth_module, "parse_aura_body", lambda text: {})
+    monkeypatch.setattr(auth_module, "extract_return_value", lambda parsed: result)
+
+    login = auth_module.YvwLogin(session)
+    return login, await login.async_submit_credentials("someone@example.invalid", "pw")
+
+
+async def test_the_code_page_is_fetched_during_the_password_step(monkeypatch) -> None:
+    """Loading that page is what makes the portal send the code.
+
+    Deferring the fetch until the code is submitted means the user is asked for
+    a code that was never sent.
+    """
+    session = FakeSession()
+    login, mfa_type = await _login_with(monkeypatch, session)
+
+    assert mfa_type == "SMS"
+    assert len(session.gets) == 1
+    assert "MALoginFlowVFPage" in session.gets[0]
+
+
+async def test_submitting_a_code_does_not_refetch_the_page(monkeypatch) -> None:
+    """A re-fetch would send a second code and void the view state."""
+    session = FakeSession()
+    login, _ = await _login_with(monkeypatch, session)
+    gets_after_login = len(session.gets)
+
+
+    async def fake_finish():
+        return "sid-value"
+
+    login.async_finish = fake_finish
+    await login.async_submit_code("123456")
+
+    assert len(session.gets) == gets_after_login
+    # One post for the password, one for the code.
+    assert len(session.posts) == 2
+    url, posted = session.posts[-1]
+    assert "MALoginFlowVFPage" in url
+    assert posted["com.salesforce.visualforce.ViewState"] == "STATE"
+    assert posted["mfapage:theForm:page:firstHidden:hidden"] == "1"
+    assert posted["mfapage:theForm:page:sixthHidden:hidden"] == "6"
+
+
+async def test_resending_reloads_the_page(monkeypatch) -> None:
+    """Reloading is how another code gets sent."""
+    session = FakeSession()
+    login, _ = await _login_with(monkeypatch, session)
+
+    await login.async_resend_code()
+
+    assert len(session.gets) == 2
+
+
+async def test_no_verification_step_skips_the_page_fetch(monkeypatch) -> None:
+    """Some sign-ins may not challenge; nothing should be fetched then."""
+    session = FakeSession()
+    login, mfa_type = await _login_with(
+        monkeypatch, session, result={"pageUrl": None}
+    )
+
+    assert mfa_type is None
+    assert session.gets == []
+    assert login.code_page_url is None

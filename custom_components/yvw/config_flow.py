@@ -61,6 +61,7 @@ from .exceptions import (
 _LOGGER = logging.getLogger(__name__)
 
 CONF_CODE = "code"
+CONF_RESEND = "resend"
 
 STEP_USER_SCHEMA = vol.Schema(
     {
@@ -73,7 +74,12 @@ STEP_USER_SCHEMA = vol.Schema(
     }
 )
 
-STEP_MFA_SCHEMA = vol.Schema({vol.Required(CONF_CODE): str})
+STEP_MFA_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_CODE, default=""): str,
+        vol.Optional(CONF_RESEND, default=False): bool,
+    }
+)
 
 
 class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -131,8 +137,16 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             assert self._login is not None
+            code = user_input.get(CONF_CODE, "").strip()
             try:
-                await self._login.async_submit_code(user_input[CONF_CODE])
+                if user_input.get(CONF_RESEND):
+                    await self._login.async_resend_code()
+                    errors["base"] = "code_resent"
+                elif not code:
+                    errors["base"] = "code_required"
+                else:
+                    await self._login.async_submit_code(code)
+                    return await self._async_finish()
             except YvwInvalidCode:
                 errors["base"] = "invalid_code"
             except YvwCannotConnect:
@@ -140,8 +154,6 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             except YvwError:
                 _LOGGER.exception("Unexpected error verifying the YVW code")
                 errors["base"] = "unknown"
-            else:
-                return await self._async_finish()
 
         return self.async_show_form(
             step_id="mfa",

@@ -127,6 +127,7 @@ class YvwLogin:
         """Store the session whose cookie jar will collect the login cookies."""
         self._session = session
         self._code_page_url: str | None = None
+        self._code_page_html: str | None = None
 
     @property
     def code_page_url(self) -> str | None:
@@ -179,14 +180,28 @@ class YvwLogin:
             return None
 
         self._code_page_url = urljoin(BASE_URL, page_url)
+
+        # Loading the verification page is what makes the portal send the code:
+        # the browser gets there by navigation, so nothing is sent until the
+        # page is actually fetched. It also mints the Visualforce view state
+        # that the eventual postback has to echo back, so the page is kept
+        # rather than re-fetched, which would invalidate it and send a second
+        # code.
+        self._code_page_html = await self._async_get(self._code_page_url)
         return result.get("mfaType")
+
+    async def async_resend_code(self) -> None:
+        """Ask the portal to send another verification code."""
+        if self._code_page_url is None:
+            raise YvwApiError("There is no verification step in progress")
+        self._code_page_html = await self._async_get(self._code_page_url)
 
     async def async_submit_code(self, code: str) -> str:
         """Post the verification code and return the session cookie."""
-        if self._code_page_url is None:
+        if self._code_page_url is None or self._code_page_html is None:
             raise YvwApiError("There is no verification step in progress")
 
-        html = await self._async_get(self._code_page_url)
+        html = self._code_page_html
         payload = build_code_form(html, code)
 
         action = _FORM_ACTION_RE.search(html)
@@ -206,9 +221,15 @@ class YvwLogin:
                 timeout=_TIMEOUT,
                 allow_redirects=True,
             ) as response:
-                await response.read()
+                returned = await response.text()
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+
+        # A rejected code re-renders the page with a fresh view state. Keeping
+        # it lets the user try again without the portal having to text them a
+        # new code.
+        if _DIGIT_FIELD_RE.search(returned):
+            self._code_page_html = returned
 
         return await self.async_finish()
 
