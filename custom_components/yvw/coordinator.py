@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 
+from homeassistant.components.logbook import async_log_entry
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -84,6 +85,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
+        self._last_keepalive: datetime | None = None
 
         @callback
         def _dummy_listener() -> None:
@@ -102,6 +104,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def session_age(self) -> timedelta | None:
         """Return how long the current session has been alive."""
         return self._session_age()
+
+    @property
+    def last_keepalive(self) -> datetime | None:
+        """Return when the portal was last pinged to hold the session open."""
+        return self._last_keepalive
 
     @property
     def last_contact(self) -> datetime | None:
@@ -200,7 +207,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         try:
             await self.api.async_ping(self.account_id)
-            self._last_contact = dt_util.utcnow()
+            self._last_contact = self._last_keepalive = dt_util.utcnow()
         except YvwAuthError:
             # Nothing will revive the session without the user, so stop pinging
             # a dead one and ask them to sign in again.
@@ -220,13 +227,21 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             # A transient failure is not worth escalating; the next ping retries.
             _LOGGER.debug("Keep-alive ping failed: %s", err)
         else:
-            if self.calibrating and await self._probe.async_record_survived(
-                self.config_entry.entry_id, idle_minutes
-            ):
+            if self.calibrating:
+                await self._probe.async_record_survived(
+                    self.config_entry.entry_id, idle_minutes
+                )
+                next_minutes = round(self.keepalive_interval.total_seconds() / 60)
                 _LOGGER.info(
                     "Session survived %s minutes idle; next test %s minutes",
                     idle_minutes,
-                    round(self.keepalive_interval.total_seconds() / 60),
+                    next_minutes,
+                )
+                # While measuring, each ping is a result worth seeing without
+                # reading a log file, so it goes in the logbook.
+                self._async_log_activity(
+                    f"session survived {idle_minutes} minutes idle, "
+                    f"testing {next_minutes} minutes next"
                 )
             if _LOGGER.isEnabledFor(logging.DEBUG):
                 _LOGGER.debug(
@@ -236,6 +251,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 )
 
         self._async_schedule_keepalive()
+
+    @callback
+    def _async_log_activity(self, message: str) -> None:
+        """Write a line to the logbook, so a run can be followed as it happens."""
+        async_log_entry(self.hass, self.address, message, DOMAIN)
 
     async def _async_conclude_calibration(self, idle_minutes: int) -> None:
         """Record the gap that killed the session and settle on a safe interval."""
@@ -251,6 +271,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             "calibration switched off; sign in again to resume",
             state.summary,
             safe,
+        )
+        self._async_log_activity(
+            f"session lapsed after {idle_minutes} minutes idle: {state.summary}. "
+            f"Keep-alive set to {safe} minutes; sign in again to resume"
         )
         self.hass.config_entries.async_update_entry(
             self.config_entry,

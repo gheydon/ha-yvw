@@ -189,6 +189,12 @@ under **Configure** and in the diagnostics download. Until then the default is
 to touch the session every 10 minutes, well inside Salesforce's shortest
 possible idle timeout.
 
+While measuring, each ping writes a line to the logbook — "session survived 45
+minutes idle, testing 50 minutes next" — so a run can be followed from the
+Home Assistant interface without reading a log file. A **Last keep-alive**
+sensor records when the portal was last touched, and carries the current
+interval and the measurement so far as attributes.
+
 Debug logging additionally records how long each session lasted:
 
 ```yaml
@@ -236,6 +242,31 @@ with account numbers, addresses and meter serials redacted.
 > This is temporary. Set `INCLUDE_SESSION_IN_DIAGNOSTICS = False` in
 > `custom_components/yvw/const.py` to turn it off, and it will be removed once
 > multi-property logins are understood.
+
+## Privacy
+
+This integration does not want to know anything about you.
+
+- **Nothing is sent anywhere except Yarra Valley Water.** The only host it ever
+  contacts is `myaccount.yvw.com.au`, to read your own meter. There is no
+  server behind this project, no account to create, and nowhere for your data
+  to go.
+- **No telemetry, no analytics, no crash reporting, no phoning home.** Not
+  disabled by default — simply not written.
+- **Your readings stay in your Home Assistant.** They go into your own recorder
+  database and nowhere else.
+- **Your password is never stored**, and the SMS code is used once and
+  discarded. See [What is stored](#what-is-stored).
+- **Nothing is collected from you by the author.** No usage counts, no install
+  pings, no identifiers. If you open an issue, you choose what to put in it.
+
+The one thing to be careful with is the **diagnostics download**, which
+necessarily contains details of your account, and in this release the session
+itself. Read the warning at the top of that file before sharing it with anyone.
+
+Nothing here can be taken on trust, and it should not be: the source is short,
+and every outbound request is made in `aura.py` and `auth.py`. Reading them is
+the only assurance worth having.
 
 ## Logo
 

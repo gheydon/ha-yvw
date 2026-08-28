@@ -68,6 +68,9 @@
       },
       "last_reading": {
         "name": "Last reading"
+      },
+      "last_keepalive": {
+        "name": "Last keep-alive"
       }
     }
   },

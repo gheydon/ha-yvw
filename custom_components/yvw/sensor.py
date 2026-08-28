@@ -34,6 +34,7 @@ async def async_setup_entry(
             LatestHourlyUsageSensor(coordinator),
             LastFullDayUsageSensor(coordinator),
             LastReadingSensor(coordinator),
+            LastKeepaliveSensor(coordinator),
         ]
     )
 
@@ -113,3 +114,32 @@ class LastReadingSensor(YvwEntity, SensorEntity):
         if latest is None:
             return None
         return latest.end
+
+
+class LastKeepaliveSensor(YvwEntity, SensorEntity):
+    """When the portal was last touched to stop the session going idle.
+
+    Mostly of interest while measuring how long a session survives, where the
+    gap between these is the thing being tested.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: YvwCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "last_keepalive")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last successful ping."""
+        return self.coordinator.last_keepalive
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return what the measurement has found so far."""
+        return {
+            "interval": str(self.coordinator.keepalive_interval),
+            "calibrating": str(self.coordinator.calibrating),
+            "measurement": self.coordinator.probe_state.summary,
+        }
