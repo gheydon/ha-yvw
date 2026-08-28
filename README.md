@@ -73,6 +73,12 @@ meter_serial   your meter's serial number
 address        the property address, used to name the device
 ```
 
+> **One exception, temporary and deliberate:** this release includes the session
+> cookie in the **Download diagnostics** file in the clear, so that a login
+> covering several properties can be investigated. See
+> [If your login covers several properties](#if-your-login-covers-several-properties).
+> Your password is still never written anywhere.
+
 The CSRF token the portal also requires is not stored at all. It is read from
 the portal on each page load, so it is always current.
 
@@ -209,12 +215,27 @@ somebody keen on checking their water use rather than a script.
 
 ## If your login covers several properties
 
-Set it up, then go to the integration, open the three-dot menu on the device and
+Setup asks for an account number because the portal will not name it to anything
+but its own web app. Making it offer a list instead needs a login that actually
+covers several properties, which nobody working on this has.
+
+If yours does, set it up and then open the three-dot menu on the device and
 choose **Download diagnostics**. The file describes the shape of the portal's
 response — how many properties were found and where they sit in the payload —
-with account numbers, addresses, meter serials and session credentials redacted.
-Attaching it to an issue is enough to get property selection working properly,
-and it does not expose your account.
+with account numbers, addresses and meter serials redacted.
+
+> **Read this before sharing a diagnostics file.**
+>
+> This release deliberately includes the **live session cookie, in the clear**,
+> so the multi-property case can be reproduced against a real account. Anyone
+> who reads the file can use that account until the session lapses.
+>
+> Do not attach it to a public issue. Send it privately, and sign out of
+> MyAccount afterwards to invalidate the session.
+>
+> This is temporary. Set `INCLUDE_SESSION_IN_DIAGNOSTICS = False` in
+> `custom_components/yvw/const.py` to turn it off, and it will be removed once
+> multi-property logins are understood.
 
 ## Logo
 

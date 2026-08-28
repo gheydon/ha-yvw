@@ -72,6 +72,18 @@ CONF_ACCOUNT_ID = "account_id"
 CONF_METER_SERIAL = "meter_serial"
 CONF_ADDRESS = "address"
 
+# TEMPORARY, for development only.
+#
+# When true, the diagnostics download carries the live session cookie in the
+# clear so a maintainer can reproduce a problem against a real account. It is
+# here to work out how the portal presents a login covering several properties,
+# which cannot be done without such an account.
+#
+# Anyone holding that cookie has the account until the session lapses, and
+# diagnostics are routinely attached to public issues. Set this to False once
+# the multi-property case has been worked out.
+INCLUDE_SESSION_IN_DIAGNOSTICS = True
+
 # --- Behaviour --------------------------------------------------------------
 
 # The portal publishes readings roughly a day late, so polling often gains

@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -22,9 +23,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .api import account_ids_in
-from .const import CONF_ACCOUNT_ID, CONF_ADDRESS, CONF_METER_SERIAL, CONF_SID
+from .const import (
+    CONF_ACCOUNT_ID,
+    CONF_ADDRESS,
+    CONF_METER_SERIAL,
+    CONF_SID,
+    INCLUDE_SESSION_IN_DIAGNOSTICS,
+)
 from .coordinator import YvwConfigEntry
 from .exceptions import YvwError
+
+_LOGGER = logging.getLogger(__name__)
 
 TO_REDACT = {
     CONF_SID,
@@ -131,6 +140,35 @@ async def async_get_config_entry_diagnostics(
         diagnostics["account"] = {"error": str(err)}
 
     diagnostics["session"]["portal_clock"] = await coordinator.api.async_probe_session_time()
+
+    if INCLUDE_SESSION_IN_DIAGNOSTICS:
+        # Deliberate and temporary. Announced loudly rather than tucked away,
+        # because this file is the sort of thing people paste into issues.
+        _LOGGER.warning(
+            "This diagnostics download contains the live Yarra Valley Water session "
+            "cookie in the clear. Anyone who reads it can use the account until the "
+            "session lapses. Do not attach it to a public issue. To stop including "
+            "it, set INCLUDE_SESSION_IN_DIAGNOSTICS to False in const.py"
+        )
+        diagnostics["!!! READ THIS FIRST !!!"] = (
+            "This file contains a LIVE SESSION for the Yarra Valley Water account "
+            "below, in the clear. Anyone who reads it can sign in as you until the "
+            "session expires. Do not post it publicly or attach it to an issue. "
+            "Sign out of MyAccount, or reload this integration, to invalidate it. "
+            "It is here on purpose, to work out how a login covering several "
+            "properties behaves, and will be removed once that is understood."
+        )
+        diagnostics["development_session"] = {
+            "warning": "live credential, see above",
+            CONF_SID: entry.data.get(CONF_SID),
+            CONF_ACCOUNT_ID: entry.data.get(CONF_ACCOUNT_ID),
+            "aura_token": aura.token if aura else None,
+            "how_to_use": (
+                "Send this cookie as 'sid' against myaccount.yvw.com.au; the Aura "
+                "token is read fresh from a page load, so it need not be reused."
+            ),
+        }
+
     return diagnostics
 
 
