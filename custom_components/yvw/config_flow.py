@@ -98,6 +98,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         self._login: YvwLogin | None = None
         self._sid: str | None = None
         self._sites: dict[str, AccountInfo] = {}
+        self._code_error: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -147,7 +148,11 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     await self._login.async_submit_code(code)
                     return await self._async_finish()
-            except YvwInvalidCode:
+            except YvwInvalidCode as err:
+                # The portal explains a refusal in its own words; passing them
+                # through beats a generic message that hides whether the code
+                # was wrong, stale or already used.
+                self._code_error = str(err)
                 errors["base"] = "invalid_code"
             except YvwCannotConnect:
                 errors["base"] = "cannot_connect"
@@ -159,7 +164,10 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="mfa",
             data_schema=STEP_MFA_SCHEMA,
             errors=errors,
-            description_placeholders={"digits": str(CODE_LENGTH)},
+            description_placeholders={
+                "digits": str(CODE_LENGTH),
+                "detail": self._code_error or "",
+            },
         )
 
     async def async_step_reauth(

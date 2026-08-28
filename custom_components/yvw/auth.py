@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from html import unescape
 from urllib.parse import urljoin
 
 import aiohttp
@@ -63,6 +64,30 @@ CODE_LENGTH = len(_DIGIT_ORDER)
 
 # Salesforce serves a login flow from a Visualforce page under /apex/.
 _LOGIN_FLOW_RE = re.compile(r"/apex/\w*LoginFlow\w*", re.IGNORECASE)
+
+
+def page_message(html: str) -> str | None:
+    """Return whatever the page is telling the user, if anything.
+
+    The portal explains a refusal in the rendered page rather than in any
+    structured field, so its own wording is the most reliable account of what
+    went wrong and is worth showing rather than paraphrasing.
+    """
+    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", html)
+    # Tags become line breaks, not spaces, so neighbouring elements do not run
+    # together into one sentence.
+    text = unescape(re.sub(r"(?s)<[^>]+>", "\n", body))
+    lines = [line.strip() for line in re.split(r"[\r\n.]+", text) if line.strip()]
+    wanted = re.compile(
+        r"\b(incorrect|invalid|expired|not valid|try again|does not match|"
+        r"unable|error|wrong)\b",
+        re.IGNORECASE,
+    )
+    for line in lines:
+        collapsed = " ".join(line.split())
+        if 8 < len(collapsed) <= 200 and wanted.search(collapsed):
+            return collapsed
+    return None
 
 
 def describe_form(html: str) -> str:
@@ -312,11 +337,16 @@ class YvwLogin:
         # text them another code.
         if _DIGIT_FIELD_RE.search(returned):
             self._code_page_html = returned
+            message = page_message(returned)
             _LOGGER.debug(
-                "The code was not accepted; the form came back. %s",
+                "The code was not accepted. portal_said=%r posted_to=%s %s",
+                message,
+                describe_url(target),
                 describe_form(returned),
             )
-            raise YvwInvalidCode("The portal did not accept that verification code")
+            raise YvwInvalidCode(
+                message or "The portal did not accept that verification code"
+            )
 
         _LOGGER.debug(
             "Code accepted; portal responded with %s bytes, next=%s",

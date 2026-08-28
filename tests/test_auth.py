@@ -377,3 +377,22 @@ def test_hidden_code_fields_are_preferred_over_visible_boxes() -> None:
 
     assert [payload[f"store_{i}"] for i in range(6)] == list("123456")
     assert all(payload[f"visible_{i}"] == "" for i in range(6))
+
+
+def test_the_portals_own_wording_is_extracted() -> None:
+    """Its explanation is more use than a generic message of ours."""
+    from custom_components.yvw.auth import page_message
+
+    html = (
+        "<html><body><h1>Enter your code</h1>"
+        '<span class="error">The code you entered is incorrect</span>'
+        "<script>var x = 'invalid';</script></body></html>"
+    )
+
+    assert page_message(html) == "The code you entered is incorrect"
+
+
+def test_a_page_with_nothing_to_say_yields_nothing() -> None:
+    from custom_components.yvw.auth import page_message
+
+    assert page_message("<html><body><p>Enter your code</p></body></html>") is None

@@ -19,7 +19,7 @@
       },
       "mfa": {
         "title": "Enter your code",
-        "description": "Yarra Valley Water has sent a {digits}-digit verification code to your phone. Each code can only be used once. If it has not arrived, tick 'Send a new code' and submit to have another one sent.",
+        "description": "Yarra Valley Water has sent a {digits}-digit verification code to your phone. Each code can only be used once, so use the most recent message. If it has not arrived, tick 'Send a new code' and submit to have another one sent. {detail}",
         "data": {
           "code": "Verification code",
           "resend": "Send a new code"
@@ -36,7 +36,7 @@
     "error": {
       "cannot_connect": "Could not reach the Yarra Valley Water portal.",
       "invalid_auth": "That email address or password was not accepted.",
-      "invalid_code": "That verification code was not accepted. Codes can only be used once.",
+      "invalid_code": "That verification code was not accepted. Codes can only be used once, so check you are using the newest message, or request a new code.",
       "unknown": "Something went wrong signing in. Check the logs for details.",
       "code_required": "Enter the verification code, or tick 'Send a new code'.",
       "code_resent": "A new code has been sent. Enter it below."
