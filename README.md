@@ -269,16 +269,20 @@ the only assurance worth having.
 
 ## Logo
 
-`brands/` holds the integration's mark: a droplet carrying a valley and a river,
-which is a nod to the name rather than anything belonging to Yarra Valley Water.
-It deliberately shares nothing with their logo — no leaf, none of their colours,
-and no imitation of their wordmark.
+A droplet holding a valley and a river: a nod to the name rather than anything
+belonging to Yarra Valley Water. It shares nothing with their logo — no leaf,
+none of their colours, and no imitation of their wordmark.
 
-Home Assistant serves integration logos from the
-[brands repository](https://github.com/home-assistant/brands), so the icon will
-only appear in the interface once `brands/icon.png` and `icon@2x.png` are
-submitted there under `custom_integrations/yvw/`. The files are sized and
-transparent, ready to go.
+The images live in `custom_components/yvw/brand/`, which Home Assistant reads
+directly as of 2026.3; local brand images take priority over the ones served
+from the brands CDN, so there is nothing to submit anywhere and no wait for a
+review. Sources are in `assets/`, rendered with:
+
+```bash
+inkscape assets/icon.svg -o /tmp/icon.png -w 1024 -h 1024 --export-background-opacity=0
+```
+
+then trimmed of surplus transparent space and written out at 256 and 512.
 
 ## Development
 
