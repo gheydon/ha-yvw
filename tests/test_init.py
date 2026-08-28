@@ -139,3 +139,23 @@ async def test_the_keepalive_interval_option_is_honoured(
     await _setup(hass, config_entry)
 
     assert config_entry.runtime_data.keepalive_interval == timedelta(minutes=45)
+
+
+async def test_removing_an_entry_forgets_its_measurement(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Measurements are keyed by entry, so a removed one would linger forever."""
+    from custom_components.yvw.probe import ProbeStore
+
+    config_entry = entry()
+    await _setup(hass, config_entry)
+    store = ProbeStore(hass)
+    await store.async_load()
+    await store.async_record_survived(config_entry.entry_id, 25)
+
+    assert await hass.config_entries.async_remove(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    fresh = ProbeStore(hass)
+    await fresh.async_load()
+    assert fresh.get(config_entry.entry_id).survived_minutes == 0

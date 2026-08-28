@@ -70,3 +70,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool
 async def _async_reload_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> None:
     """Reload when the options change, so a new interval takes effect."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> None:
+    """Forget anything measured for an entry being removed."""
+    probe = ProbeStore(hass)
+    await probe.async_load()
+    await probe.async_forget(entry.entry_id)

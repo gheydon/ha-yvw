@@ -99,6 +99,15 @@ class ProbeStore:
         await self._async_save()
         return state
 
+    async def async_forget(self, entry_id: str) -> None:
+        """Drop what was measured for an entry that no longer exists.
+
+        Measurements are keyed by config entry, and a removed entry leaves its
+        results behind forever otherwise.
+        """
+        if self._states.pop(entry_id, None) is not None:
+            await self._async_save()
+
     async def _async_save(self) -> None:
         await self._store.async_save(
             {entry_id: asdict(state) for entry_id, state in self._states.items()}
