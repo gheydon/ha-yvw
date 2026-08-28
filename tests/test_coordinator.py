@@ -29,10 +29,11 @@ from custom_components.yvw.const import (
     EVENT_AUTH_FAILED,
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
+    KEEPALIVE_RETRY,
     MAX_KEEPALIVE_MINUTES,
 )
 from custom_components.yvw.coordinator import YvwCoordinator
-from custom_components.yvw.exceptions import YvwAuthError
+from custom_components.yvw.exceptions import YvwAuthError, YvwError
 from custom_components.yvw.probe import ProbeState, ProbeStore
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
@@ -457,3 +458,54 @@ async def test_an_unexpected_error_still_arms_the_next_ping(
         await coordinator._async_keepalive(datetime.now(MELBOURNE))
 
     assert delays, "the loop stopped after an unexpected error"
+
+
+async def test_a_failed_ping_is_retried_soon_not_a_whole_interval_later(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A failed ping leaves the session untouched.
+
+    Waiting the full interval again doubles the idle gap, which risks losing a
+    session that was fine and, while measuring, reports a gap far longer than
+    the one being tested.
+    """
+    api = StubApi()
+
+    async def refuse(account_id: str) -> None:
+        raise YvwError("portal had a moment")
+
+    api.async_ping = refuse
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 60})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=61)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert delays[0] == KEEPALIVE_RETRY.total_seconds()
+
+
+async def test_a_timed_out_ping_is_also_retried_soon(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A request timeout is what stopped the loop overnight."""
+    api = StubApi()
+
+    async def time_out(account_id: str) -> None:
+        raise TimeoutError
+
+    api.async_ping = time_out
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 60})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=61)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert delays[0] == KEEPALIVE_RETRY.total_seconds()

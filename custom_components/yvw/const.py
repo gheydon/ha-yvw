@@ -108,6 +108,11 @@ CONF_KEEPALIVE_MINUTES = "keepalive_minutes"
 # is not perfectly periodic.
 KEEPALIVE_JITTER = 0.2
 
+# A ping that fails leaves the session untouched, so waiting a whole interval
+# before trying again doubles the idle gap: it risks losing a session that was
+# fine, and while measuring it reports a gap far longer than the one intended.
+KEEPALIVE_RETRY = timedelta(minutes=2)
+
 # Calibration. The portal does not publish its idle timeout, so it can be found
 # by holding a session open at steadily longer intervals until one lapses. That
 # costs a verification code when it succeeds, which is why it is opt-in.

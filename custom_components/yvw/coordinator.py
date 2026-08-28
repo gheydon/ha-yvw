@@ -28,6 +28,7 @@ from .const import (
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     KEEPALIVE_JITTER,
+    KEEPALIVE_RETRY,
     MAX_HISTORY_DAYS,
     MAX_KEEPALIVE_MINUTES,
     PROBE_SAFETY_MARGIN,
@@ -244,9 +245,12 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self.config_entry.async_start_reauth(self.hass)
                 return
             except YvwError as err:
-                # A transient failure is not worth escalating; the next retries.
-                _LOGGER.debug("Keep-alive ping failed: %s", err)
+                # A transient failure is not worth escalating, but it does mean
+                # the session went untouched, so try again shortly rather than
+                # after another whole interval.
+                _LOGGER.debug("Keep-alive ping failed after %s min idle: %s", idle_minutes, err)
                 self._async_fire_keepalive("failed", idle_minutes, error=str(err))
+                reschedule = KEEPALIVE_RETRY
                 return
 
             if self.calibrating:
@@ -276,7 +280,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self.async_update_listeners()
         except Exception:
             # Anything unforeseen would otherwise end the loop without a word.
-            _LOGGER.exception("Keep-alive failed unexpectedly; scheduling the next one")
+            # A request timing out lands here, and left the session untouched,
+            # so it is retried soon rather than a whole interval later.
+            _LOGGER.exception("Keep-alive failed unexpectedly; retrying shortly")
+            reschedule = KEEPALIVE_RETRY
         finally:
             # A dead session is the one case where stopping is correct: the
             # reauth flow restarts this once the user has signed in.
