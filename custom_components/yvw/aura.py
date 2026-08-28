@@ -33,8 +33,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from html import unescape
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote, urljoin, urlsplit
 
 import aiohttp
 from yarl import URL
@@ -63,6 +64,24 @@ _DESCRIPTOR_TAILS = ("/resources.js", "/app.js")
 # cannot latch onto the bootstrap script's own references to the same name.
 _TOKEN_COOKIE_RE = re.compile(r'"eikoocnekot"\s*:\s*"([^"]+)"')
 
+# frontdoor.jsp swaps the session id in its query for real cookies and then
+# bounces onward from JavaScript rather than with an HTTP redirect, so the
+# client has to follow it by hand.
+_CLIENT_REDIRECT_RES = (
+    re.compile(r"""window\.location\.replace\(\s*['"]([^'"]+)['"]""", re.IGNORECASE),
+    re.compile(r"""window\.location(?:\.href)?\s*=\s*['"]([^'"]+)['"]""", re.IGNORECASE),
+    # \burl guards against matching the url= inside a retURL= parameter, and the
+    # lazy prefix keeps it on the first match rather than the last.
+    re.compile(
+        r"""<meta[^>]+http-equiv=['"]refresh['"][^>]*"""
+        r"""content=['"][^'"]*?\burl\s*=\s*([^'"]+)['"]""",
+        re.IGNORECASE,
+    ),
+)
+
+# Enough to cover frontdoor bouncing into the community and on to the flow.
+MAX_CLIENT_REDIRECTS = 6
+
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
 
@@ -72,6 +91,31 @@ class AuraContext:
 
     context: dict[str, Any]
     token: str
+
+
+def describe_url(url: str | None) -> str:
+    """Describe a URL for the log without leaking anything sensitive.
+
+    The portal can hand back a URL carrying a one-time session token, which must
+    not reach a log file. The path and the parameter names are what matter for
+    working out where a sign-in went wrong, so values are masked.
+    """
+    if not url:
+        return "<none>"
+    parts = urlsplit(url)
+    params = parse_qsl(parts.query, keep_blank_values=True)
+    masked = "&".join(f"{name}=<{len(value)} chars>" for name, value in params)
+    location = parts.path if not parts.netloc else f"{parts.netloc}{parts.path}"
+    return f"{location}?{masked}" if masked else location
+
+
+def find_client_redirect(html: str) -> str | None:
+    """Return the target of a JavaScript or meta redirect, if the page has one."""
+    for pattern in _CLIENT_REDIRECT_RES:
+        match = pattern.search(html)
+        if match:
+            return unescape(match.group(1))
+    return None
 
 
 def parse_aura_body(text: str) -> dict[str, Any]:
@@ -224,17 +268,34 @@ def read_cookie(session: aiohttp.ClientSession, name: str) -> str | None:
 async def async_load_page_context(
     session: aiohttp.ClientSession, url: str, app: str = AURA_APP
 ) -> AuraContext:
-    """Load a portal page and take the Aura context and CSRF token from it."""
-    try:
-        async with session.get(
-            url, headers=page_headers(), timeout=_REQUEST_TIMEOUT, allow_redirects=True
-        ) as response:
-            # An expired session is bounced to the login page.
-            if "/login" in str(response.url) and "/login" not in url:
-                raise YvwAuthError("Session expired: redirected to the login page")
-            html = await response.text()
-    except aiohttp.ClientError as err:
-        raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+    """Load a portal page and take the Aura context and CSRF token from it.
+
+    Salesforce moves between frontdoor.jsp, the community and any pending login
+    flow using script and meta redirects rather than HTTP ones, so the hops are
+    followed by hand. Stopping at the first response lands on a bounce page,
+    which carries neither the framework descriptor nor a token.
+    """
+    html = ""
+    for _ in range(MAX_CLIENT_REDIRECTS):
+        try:
+            async with session.get(
+                url, headers=page_headers(), timeout=_REQUEST_TIMEOUT, allow_redirects=True
+            ) as response:
+                # An expired session is bounced to the login page.
+                if "/login" in str(response.url) and "/login" not in url:
+                    raise YvwAuthError("Session expired: redirected to the login page")
+                html = await response.text()
+                final_url = str(response.url)
+        except aiohttp.ClientError as err:
+            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+
+        redirect = find_client_redirect(html)
+        if redirect is None:
+            break
+        _LOGGER.debug("Following a client-side redirect to %s", describe_url(redirect))
+        url = urljoin(final_url, redirect)
+    else:
+        raise YvwApiError("The portal redirected too many times to follow")
 
     cookie_name = token_cookie_name(html)
     if cookie_name is None:

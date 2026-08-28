@@ -12,15 +12,17 @@ from __future__ import annotations
 import json
 import logging
 import re
-from html import unescape
-from urllib.parse import parse_qsl, urljoin, urlsplit
+from urllib.parse import urljoin
 
 import aiohttp
 
 from .aura import (
+    MAX_CLIENT_REDIRECTS,
     async_load_page_context,
     build_message,
+    describe_url,
     extract_return_value,
+    find_client_redirect,
     page_headers,
     parse_aura_body,
     read_cookie,
@@ -59,42 +61,8 @@ _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
 CODE_LENGTH = len(_DIGIT_ORDER)
 
-# frontdoor.jsp swaps the session id in its query for real cookies and then
-# bounces onward from JavaScript rather than with an HTTP redirect, so the
-# client has to follow it by hand.
-_CLIENT_REDIRECT_RES = (
-    re.compile(r"""window\.location\.replace\(\s*['"]([^'"]+)['"]""", re.IGNORECASE),
-    re.compile(r"""window\.location(?:\.href)?\s*=\s*['"]([^'"]+)['"]""", re.IGNORECASE),
-    # \burl guards against matching the url= inside a retURL= parameter, and the
-    # lazy prefix keeps it on the first match rather than the last.
-    re.compile(
-        r"""<meta[^>]+http-equiv=['"]refresh['"][^>]*"""
-        r"""content=['"][^'"]*?\burl\s*=\s*([^'"]+)['"]""",
-        re.IGNORECASE,
-    ),
-)
-
-# Enough to cover frontdoor bouncing into the community and on to the flow.
-_MAX_CLIENT_REDIRECTS = 6
-
 # Salesforce serves a login flow from a Visualforce page under /apex/.
 _LOGIN_FLOW_RE = re.compile(r"/apex/\w*LoginFlow\w*", re.IGNORECASE)
-
-
-def describe_url(url: str | None) -> str:
-    """Describe a URL for the log without leaking anything sensitive.
-
-    The portal can hand back a URL carrying a one-time session token, which must
-    not reach a log file. The path and the parameter names are what matter for
-    working out where a sign-in went wrong, so values are masked.
-    """
-    if not url:
-        return "<none>"
-    parts = urlsplit(url)
-    params = parse_qsl(parts.query, keep_blank_values=True)
-    masked = "&".join(f"{name}=<{len(value)} chars>" for name, value in params)
-    location = parts.path if not parts.netloc else f"{parts.netloc}{parts.path}"
-    return f"{location}?{masked}" if masked else location
 
 
 def describe_form(html: str) -> str:
@@ -117,15 +85,6 @@ def describe_form(html: str) -> str:
         f"forms={len(re.findall(r'<form', html, re.IGNORECASE))} "
         f"inputs={len(fields)} :: " + " | ".join(fields[:40])
     )
-
-
-def find_client_redirect(html: str) -> str | None:
-    """Return the target of a JavaScript or meta redirect, if the page has one."""
-    for pattern in _CLIENT_REDIRECT_RES:
-        match = pattern.search(html)
-        if match:
-            return unescape(match.group(1))
-    return None
 
 
 def _parse_inputs(html: str) -> list[dict[str, str]]:
@@ -379,7 +338,7 @@ class YvwLogin:
         assert self._code_page_url is not None
         url = self._code_page_url
 
-        for hop in range(_MAX_CLIENT_REDIRECTS):
+        for hop in range(MAX_CLIENT_REDIRECTS):
             html, final_url, status = await self._async_get(url)
             has_code_fields = bool(_DIGIT_FIELD_RE.search(html))
             redirect = None if has_code_fields else find_client_redirect(html)

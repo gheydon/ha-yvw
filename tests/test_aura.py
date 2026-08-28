@@ -96,3 +96,82 @@ def test_a_rejected_login_is_reported_as_an_api_error() -> None:
 def test_the_dispatcher_double_wrapping_is_unwrapped() -> None:
     body = {"actions": [{"state": "SUCCESS", "returnValue": {"returnValue": {"a": 1}}}]}
     assert extract_return_value(body) == {"a": 1}
+
+
+DESCRIPTOR = (
+    "/myaccount/s/sfsites/l/%7B%22mode%22%3A%22PROD%22%2C%22fwuid%22%3A%22FW1%22%2C"
+    "%22app%22%3A%22siteforce%3AcommunityApp%22%2C%22loaded%22%3A%7B%22A%22%3A%221%22%7D"
+    "%7D/resources.js"
+)
+
+COMMUNITY_PAGE = (
+    f'<script src="{DESCRIPTOR}"></script>'
+    '<script>auraConfig = {"eikoocnekot":"__Host-ERIC_PROD-9"};</script>'
+)
+
+BOUNCE_PAGE = (
+    "<html><body><script>window.location.replace("
+    "'https://myaccount.yvw.com.au/myaccount/s/usage');</script></body></html>"
+)
+
+
+class _Cookie:
+    def __init__(self, key: str, value: str) -> None:
+        self.key = key
+        self.value = value
+
+
+class _Response:
+    def __init__(self, text: str, url: str) -> None:
+        self._text = text
+        self.url = url
+        self.status = 200
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def text(self) -> str:
+        return self._text
+
+
+class _Session:
+    """Serves a bounce page first, then the real one."""
+
+    def __init__(self, bodies: list[str]) -> None:
+        self._bodies = bodies
+        self.gets: list[str] = []
+        self.cookie_jar = [_Cookie("__Host-ERIC_PROD-9", "a.b.c")]
+
+    def get(self, url, **kwargs):
+        self.gets.append(url)
+        body = self._bodies[min(len(self.gets) - 1, len(self._bodies) - 1)]
+        return _Response(body, url)
+
+
+async def test_loading_a_page_follows_a_client_side_bounce() -> None:
+    """After a login flow completes the portal bounces via script, not HTTP.
+
+    Reading the bounce page instead of following it finds neither the framework
+    descriptor nor a token.
+    """
+    from custom_components.yvw.aura import async_load_page_context
+
+    session = _Session([BOUNCE_PAGE, COMMUNITY_PAGE])
+    aura = await async_load_page_context(session, "https://myaccount.yvw.com.au/myaccount/s/")
+
+    assert len(session.gets) == 2
+    assert session.gets[-1].endswith("/myaccount/s/usage")
+    assert aura.context["fwuid"] == "FW1"
+    assert aura.token == "a.b.c"
+
+
+async def test_a_page_that_never_settles_is_an_error() -> None:
+    """A bounce loop must not spin forever."""
+    from custom_components.yvw.aura import async_load_page_context
+
+    session = _Session([BOUNCE_PAGE])
+    with pytest.raises(YvwApiError, match="redirected too many times"):
+        await async_load_page_context(session, "https://myaccount.yvw.com.au/myaccount/s/")
