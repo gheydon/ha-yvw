@@ -1,0 +1,5 @@
+homeassistant==2025.12.4
+pytest
+pytest-asyncio
+pytest-homeassistant-custom-component
+ruff

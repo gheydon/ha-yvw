@@ -1,0 +1,73 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to MyAccount",
+        "description": "Enter your Yarra Valley Water MyAccount details. They are used once to sign in and are not stored \u2014 only the resulting session is kept.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The MyAccount session has expired. Sign in again to resume collecting water usage.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "mfa": {
+        "title": "Enter your code",
+        "description": "Yarra Valley Water has sent a {digits}-digit verification code to your phone.",
+        "data": {
+          "code": "Verification code"
+        }
+      },
+      "site": {
+        "title": "Choose a property",
+        "description": "Select the property whose water use you want to follow.",
+        "data": {
+          "account_id": "Property"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Yarra Valley Water portal.",
+      "invalid_auth": "That email address or password was not accepted.",
+      "invalid_code": "That verification code was not accepted. Codes can only be used once.",
+      "unknown": "Something went wrong signing in. Check the logs for details."
+    },
+    "abort": {
+      "already_configured": "This water account is already set up.",
+      "no_account": "Signed in, but no water account could be read from the portal.",
+      "no_meter": "This account has no digital meter, so there is no hourly usage to collect.",
+      "wrong_account": "Those credentials are for a different water account.",
+      "reauth_successful": "Signed in again successfully."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_hourly_usage": {
+        "name": "Latest hourly usage"
+      },
+      "last_full_day_usage": {
+        "name": "Last full day usage"
+      },
+      "last_reading": {
+        "name": "Last reading"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Yarra Valley Water options",
+        "description": "How often to touch the portal so the sign-in session does not lapse. Lower is safer but talks to Yarra Valley Water more often; higher is quieter but risks the session expiring, which needs a new SMS code.",
+        "data": {
+          "keepalive_minutes": "Keep-alive interval"
+        }
+      }
+    }
+  }
+}

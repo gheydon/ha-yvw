@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "sensor": {
+      "latest_hourly_usage": { "default": "mdi:water" },
+      "last_day_usage": { "default": "mdi:water-outline" },
+      "last_reading": { "default": "mdi:clock-check-outline" }
+    }
+  }
+}

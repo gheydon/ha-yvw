@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manifest version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(python -c "import json;print(json.load(open('custom_components/yvw/manifest.json'))['version'])")
+          if [ "$tag" != "$manifest" ]; then
+            echo "Tag $tag does not match manifest version $manifest" >&2
+            exit 1
+          fi
+      - name: Create release
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
