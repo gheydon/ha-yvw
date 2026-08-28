@@ -96,6 +96,19 @@ CONF_KEEPALIVE_MINUTES = "keepalive_minutes"
 # is not perfectly periodic.
 KEEPALIVE_JITTER = 0.2
 
+# Calibration. The portal does not publish its idle timeout, so it can be found
+# by holding a session open at steadily longer intervals until one lapses. That
+# costs a verification code when it succeeds, which is why it is opt-in.
+CONF_PROBE_ENABLED = "probe_session_timeout"
+CONF_PROBE_STEP_MINUTES = "probe_step_minutes"
+DEFAULT_PROBE_STEP_MINUTES = 5
+
+# Once the timeout is known, sit this far inside it rather than on the edge.
+PROBE_SAFETY_MARGIN = 0.75
+
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.probe"
+
 # getDMUsage refuses any window starting more than 30 days before today.
 MAX_HISTORY_DAYS = 30
 

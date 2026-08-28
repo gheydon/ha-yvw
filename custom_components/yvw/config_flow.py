@@ -44,8 +44,11 @@ from .const import (
     CONF_ADDRESS,
     CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
+    CONF_PROBE_ENABLED,
+    CONF_PROBE_STEP_MINUTES,
     CONF_SID,
     DEFAULT_KEEPALIVE_MINUTES,
+    DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
     MAX_KEEPALIVE_MINUTES,
     MIN_KEEPALIVE_MINUTES,
@@ -357,17 +360,23 @@ class YvwOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
+        options = self.config_entry.options
+
         if user_input is not None:
             return self.async_create_entry(
-                data={CONF_KEEPALIVE_MINUTES: int(user_input[CONF_KEEPALIVE_MINUTES])}
+                data={
+                    CONF_KEEPALIVE_MINUTES: int(user_input[CONF_KEEPALIVE_MINUTES]),
+                    CONF_PROBE_ENABLED: user_input[CONF_PROBE_ENABLED],
+                    CONF_PROBE_STEP_MINUTES: int(user_input[CONF_PROBE_STEP_MINUTES]),
+                }
             )
 
-        current = self.config_entry.options.get(
-            CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES
-        )
         schema = vol.Schema(
             {
-                vol.Required(CONF_KEEPALIVE_MINUTES, default=current): NumberSelector(
+                vol.Required(
+                    CONF_KEEPALIVE_MINUTES,
+                    default=options.get(CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES),
+                ): NumberSelector(
                     NumberSelectorConfig(
                         min=MIN_KEEPALIVE_MINUTES,
                         max=MAX_KEEPALIVE_MINUTES,
@@ -375,7 +384,35 @@ class YvwOptionsFlow(OptionsFlow):
                         mode=NumberSelectorMode.BOX,
                         unit_of_measurement="minutes",
                     )
-                )
+                ),
+                vol.Required(
+                    CONF_PROBE_ENABLED,
+                    default=options.get(CONF_PROBE_ENABLED, False),
+                ): bool,
+                vol.Required(
+                    CONF_PROBE_STEP_MINUTES,
+                    default=options.get(CONF_PROBE_STEP_MINUTES, DEFAULT_PROBE_STEP_MINUTES),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1,
+                        max=60,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="minutes",
+                    )
+                ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={"findings": self._findings()},
+        )
+
+    def _findings(self) -> str:
+        """Describe what calibration has measured so far."""
+        entry = self.config_entry
+        coordinator = getattr(entry, "runtime_data", None)
+        if coordinator is None:
+            return "Not running."
+        return f"Measured so far: {coordinator.probe_state.summary}."

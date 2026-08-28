@@ -75,9 +75,11 @@
     "step": {
       "init": {
         "title": "Yarra Valley Water options",
-        "description": "How often to touch the portal so the sign-in session does not lapse. Lower is safer but talks to Yarra Valley Water more often; higher is quieter but risks the session expiring, which needs a new SMS code.",
+        "description": "How often to touch the portal so the sign-in session does not lapse. Lower is safer but talks to Yarra Valley Water more often; higher is quieter but risks the session expiring, which needs a new SMS code.\n\nFinding the timeout stretches the interval a step at a time until a session does lapse, which brackets the real limit. It ends by costing one verification code, then settles on a safe interval and switches itself off.\n\n{findings}",
         "data": {
-          "keepalive_minutes": "Keep-alive interval"
+          "keepalive_minutes": "Keep-alive interval",
+          "probe_session_timeout": "Find the session timeout",
+          "probe_step_minutes": "Increase by, each time it survives"
         }
       }
     }

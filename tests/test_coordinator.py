@@ -9,6 +9,7 @@ import pytest
 from homeassistant.components.recorder import Recorder
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
@@ -18,14 +19,19 @@ from custom_components.yvw.api import UsageReading
 from custom_components.yvw.const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
+    CONF_PROBE_ENABLED,
+    CONF_PROBE_STEP_MINUTES,
     CONF_SID,
     DOMAIN,
     EVENT_AUTH_FAILED,
     EVENT_NEW_READINGS,
+    MAX_KEEPALIVE_MINUTES,
 )
 from custom_components.yvw.coordinator import YvwCoordinator
 from custom_components.yvw.exceptions import YvwAuthError
+from custom_components.yvw.probe import ProbeState, ProbeStore
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
 ACCOUNT = "1234567890"
@@ -53,7 +59,9 @@ class StubApi:
         return None
 
 
-def build_coordinator(hass: HomeAssistant, api: StubApi) -> YvwCoordinator:
+def build_coordinator(
+    hass: HomeAssistant, api: StubApi, options: dict | None = None
+) -> YvwCoordinator:
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -63,10 +71,18 @@ def build_coordinator(hass: HomeAssistant, api: StubApi) -> YvwCoordinator:
             CONF_ADDRESS: ADDRESS,
         },
         unique_id=ACCOUNT,
+        options=options or {},
     )
     entry.add_to_hass(hass)
     return YvwCoordinator(
-        hass, entry, api, ACCOUNT, METER, ADDRESS, portal_tz=MELBOURNE
+        hass,
+        entry,
+        api,
+        ACCOUNT,
+        METER,
+        ADDRESS,
+        portal_tz=MELBOURNE,
+        probe=ProbeStore(hass),
     )
 
 
@@ -193,3 +209,86 @@ async def test_only_complete_days_are_totalled(
 
     assert coordinator.data.last_full_day == date(2026, 8, 20)
     assert coordinator.data.last_full_day_litres == 240
+
+
+# --- Calibration -----------------------------------------------------------
+
+
+def test_the_interval_is_the_configured_one_when_not_calibrating(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing should stretch unless asked to."""
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10})
+
+    assert coordinator.calibrating is False
+    assert coordinator.keepalive_interval == timedelta(minutes=10)
+
+
+def test_calibration_tests_a_longer_gap_than_the_last_one_survived(
+    hass: HomeAssistant,
+) -> None:
+    """Each round has to reach further than the last or it learns nothing."""
+    coordinator = build_coordinator(
+        hass,
+        StubApi(),
+        {CONF_KEEPALIVE_MINUTES: 10, CONF_PROBE_ENABLED: True, CONF_PROBE_STEP_MINUTES: 5},
+    )
+    coordinator.probe_state.survived_minutes = 40
+
+    assert coordinator.calibrating is True
+    assert coordinator.keepalive_interval == timedelta(minutes=45)
+
+
+def test_calibration_never_exceeds_the_maximum(hass: HomeAssistant) -> None:
+    """A session that never lapses must not stretch without bound."""
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10, CONF_PROBE_ENABLED: True}
+    )
+    coordinator.probe_state.survived_minutes = MAX_KEEPALIVE_MINUTES + 100
+
+    assert coordinator.keepalive_interval == timedelta(minutes=MAX_KEEPALIVE_MINUTES)
+
+
+def test_a_concluded_measurement_stops_calibrating(hass: HomeAssistant) -> None:
+    """Once the timeout is bracketed there is nothing left to measure."""
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10, CONF_PROBE_ENABLED: True}
+    )
+    state = coordinator.probe_state
+    state.survived_minutes = 40
+    state.failed_minutes = 45
+
+    assert coordinator.calibrating is False
+    assert coordinator.keepalive_interval == timedelta(minutes=10)
+
+
+def test_the_finding_brackets_the_timeout() -> None:
+    """The answer is a range: the longest survived and the gap that failed."""
+    state = ProbeState(
+        survived_minutes=40, failed_minutes=45, failed_session_age_minutes=300
+    )
+
+    assert state.concluded is True
+    assert "between 40 and 45" in state.summary
+
+
+async def test_concluding_settles_on_an_interval_inside_the_timeout(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Sitting on the boundary would lapse again; back off inside it."""
+    api = StubApi()
+    api.async_ping = _raise_auth_error
+    coordinator = build_coordinator(
+        hass, api, {CONF_KEEPALIVE_MINUTES: 10, CONF_PROBE_ENABLED: True}
+    )
+    coordinator.probe_state.survived_minutes = 40
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=45)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    state = coordinator.probe_state
+    assert state.failed_minutes == 45
+    # Calibration switches itself off and keeps clear of the boundary.
+    assert coordinator.config_entry.options[CONF_PROBE_ENABLED] is False
+    assert coordinator.config_entry.options[CONF_KEEPALIVE_MINUTES] == 30

@@ -91,6 +91,8 @@ async def async_get_config_entry_diagnostics(
             "keepalive_interval": str(coordinator.keepalive_interval),
             "update_interval": str(coordinator.update_interval),
             "keepalive_running": coordinator.keepalive_running,
+            "calibrating": coordinator.calibrating,
+            "timeout_measurement": coordinator.probe_state.summary,
         },
         "aura": {
             "context_loaded": aura is not None,

@@ -118,12 +118,20 @@ the portal periodically to stop it going idle. If the session lapses anyway, a
 repair appears under **Settings → System → Repairs** asking you to sign in
 again; nothing is recorded as zero usage in the meantime.
 
-How long a session survives untouched is not published. The default is to touch
-it every 10 minutes, which is well inside Salesforce's shortest possible idle
-timeout. If you would rather it talked to Yarra Valley Water less often, raise
-the interval under **Configure** on the integration — at the risk of the session
-lapsing and needing another code. Turning on debug logging records how long each
-session actually lasted, which is the way to find the real number:
+How long a session survives untouched is not published, so the integration can
+measure it. Turn on **Find the session timeout** under **Configure** and each
+keep-alive waits a little longer than the last gap the session came back from,
+climbing until one finally lapses. That brackets the real limit — "timed out
+between 40 and 45 minutes idle" — and it then sets the interval to sit safely
+inside that and switches itself off.
+
+It ends by costing one verification code, which is the whole price of the
+measurement, so run it when you are around to sign in again. The result appears
+under **Configure** and in the diagnostics download. Until then the default is
+to touch the session every 10 minutes, well inside Salesforce's shortest
+possible idle timeout.
+
+Debug logging additionally records how long each session lasted:
 
 ```yaml
 logger:

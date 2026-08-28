@@ -18,15 +18,21 @@ from homeassistant.util import dt as dt_util
 from .api import UsageReading, YvwApi
 from .const import (
     CONF_KEEPALIVE_MINUTES,
+    CONF_PROBE_ENABLED,
+    CONF_PROBE_STEP_MINUTES,
     DEFAULT_KEEPALIVE_MINUTES,
+    DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
     EVENT_AUTH_FAILED,
     EVENT_NEW_READINGS,
     KEEPALIVE_JITTER,
     MAX_HISTORY_DAYS,
+    MAX_KEEPALIVE_MINUTES,
+    PROBE_SAFETY_MARGIN,
     UPDATE_INTERVAL,
 )
 from .exceptions import YvwAuthError, YvwError
+from .probe import ProbeState, ProbeStore
 from .statistics import async_insert_statistics, statistic_id_for
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +65,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         meter_serial: str,
         address: str,
         portal_tz: tzinfo,
+        probe: ProbeStore,
     ) -> None:
         """Initialise the coordinator."""
         super().__init__(
@@ -73,6 +80,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self.meter_serial = meter_serial
         self.address = address
         self._portal_tz = portal_tz
+        self._probe = probe
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
@@ -106,12 +114,39 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         return self._cancel_keepalive is not None
 
     @property
-    def keepalive_interval(self) -> timedelta:
-        """Return how often to ping the portal."""
-        minutes = self.config_entry.options.get(
+    def probe_state(self) -> ProbeState:
+        """Return what has been measured about the session timeout."""
+        return self._probe.get(self.config_entry.entry_id)
+
+    @property
+    def calibrating(self) -> bool:
+        """Return whether the interval is being stretched to find the timeout."""
+        return bool(
+            self.config_entry.options.get(CONF_PROBE_ENABLED)
+        ) and not self.probe_state.concluded
+
+    @property
+    def configured_interval_minutes(self) -> int:
+        """Return the interval the user asked for."""
+        return self.config_entry.options.get(
             CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES
         )
-        return timedelta(minutes=minutes)
+
+    @property
+    def keepalive_interval(self) -> timedelta:
+        """Return how long to leave the session alone before touching it.
+
+        While calibrating this climbs a step past the longest gap already
+        survived, so each ping tests a slightly longer idle period than the last
+        until one finds the session gone.
+        """
+        minutes = self.configured_interval_minutes
+        if self.calibrating:
+            step = self.config_entry.options.get(
+                CONF_PROBE_STEP_MINUTES, DEFAULT_PROBE_STEP_MINUTES
+            )
+            minutes = max(minutes, self.probe_state.survived_minutes + step)
+        return timedelta(minutes=min(minutes, MAX_KEEPALIVE_MINUTES))
 
     @callback
     def async_start_keepalive(self) -> None:
@@ -136,7 +171,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         configured interval.
         """
         seconds = self.keepalive_interval.total_seconds()
-        delay = random.uniform(seconds * (1 - KEEPALIVE_JITTER), seconds)
+        # Jitter only shortens the gap, which would understate a measurement.
+        delay = seconds if self.calibrating else random.uniform(
+            seconds * (1 - KEEPALIVE_JITTER), seconds
+        )
         self._cancel_keepalive = async_call_later(self.hass, delay, self._async_keepalive)
 
     @callback
@@ -157,6 +195,9 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._async_schedule_keepalive()
             return
 
+        idle = dt_util.utcnow() - (self._last_contact or dt_util.utcnow())
+        idle_minutes = round(idle.total_seconds() / 60)
+
         try:
             await self.api.async_ping(self.account_id)
             self._last_contact = dt_util.utcnow()
@@ -170,6 +211,8 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self.keepalive_interval,
             )
             self.async_stop_keepalive()
+            if self.calibrating:
+                await self._async_conclude_calibration(idle_minutes)
             self._async_fire_auth_failed("keepalive")
             self.config_entry.async_start_reauth(self.hass)
             return
@@ -177,6 +220,14 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             # A transient failure is not worth escalating; the next ping retries.
             _LOGGER.debug("Keep-alive ping failed: %s", err)
         else:
+            if self.calibrating and await self._probe.async_record_survived(
+                self.config_entry.entry_id, idle_minutes
+            ):
+                _LOGGER.info(
+                    "Session survived %s minutes idle; next test %s minutes",
+                    idle_minutes,
+                    round(self.keepalive_interval.total_seconds() / 60),
+                )
             if _LOGGER.isEnabledFor(logging.DEBUG):
                 _LOGGER.debug(
                     "Keep-alive ok, session age %s, portal session clock: %s",
@@ -185,6 +236,30 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 )
 
         self._async_schedule_keepalive()
+
+    async def _async_conclude_calibration(self, idle_minutes: int) -> None:
+        """Record the gap that killed the session and settle on a safe interval."""
+        age = self._session_age()
+        state = await self._probe.async_record_failure(
+            self.config_entry.entry_id,
+            idle_minutes,
+            round(age.total_seconds() / 60) if age else 0,
+        )
+        safe = max(1, int(state.survived_minutes * PROBE_SAFETY_MARGIN)) or 1
+        _LOGGER.warning(
+            "Session timeout found: %s. Keep-alive set to %s minutes and "
+            "calibration switched off; sign in again to resume",
+            state.summary,
+            safe,
+        )
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                CONF_PROBE_ENABLED: False,
+                CONF_KEEPALIVE_MINUTES: safe,
+            },
+        )
 
     def _session_age(self) -> timedelta | None:
         """Return how long the current session has been alive."""

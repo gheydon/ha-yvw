@@ -19,6 +19,7 @@ from .const import (
     PORTAL_TIMEZONE,
 )
 from .coordinator import YvwConfigEntry, YvwCoordinator
+from .probe import ProbeStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     if portal_tz is None:  # pragma: no cover - the tz database always has this
         raise RuntimeError(f"Unknown timezone {PORTAL_TIMEZONE}")
 
+    probe = ProbeStore(hass)
+    await probe.async_load()
+
     coordinator = YvwCoordinator(
         hass,
         entry,
@@ -44,6 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
         meter_serial=entry.data[CONF_METER_SERIAL],
         address=entry.data[CONF_ADDRESS],
         portal_tz=portal_tz,
+        probe=probe,
     )
 
     await coordinator.async_config_entry_first_refresh()
