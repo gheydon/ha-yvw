@@ -16,6 +16,10 @@ Requires a digital meter. If the Usage page of
 [MyAccount](https://myaccount.yvw.com.au/) shows you an hourly chart, you have
 one.
 
+You sign in once with your MyAccount email, password and the code they text you.
+**Your password is never saved** — only the session that sign-in produces, which
+is what every later request uses. See [What is stored](#what-is-stored).
+
 ## Installing
 
 Click the button above, which opens this repository straight in HACS on your own
@@ -43,10 +47,46 @@ The portal only names your account once its own web app has run and cached it,
 which a background client never does, so setup may ask for the number. It is the
 10-digit number on your bill, shown on the portal beside your address.
 
-Your password is used once, to sign in. It is **not stored** — only the
-resulting session is kept, because the portal demands a fresh code every time
-anyone signs in, so a saved password would not let the integration sign itself
-back in anyway.
+## What is stored
+
+**Your email address and password are never saved.** They are sent once, to the
+portal's own sign-in, and discarded the moment that request returns. They are
+not written to the config entry, not written to disk, and not kept in memory
+after setup finishes.
+
+The same goes for the SMS code: it is used once to complete the verification
+step and then discarded.
+
+What sign-in produces is a **session**, and that session is the only credential
+kept. From that point on it is the only thing used to talk to Yarra Valley
+Water — every reading, and every keep-alive, is that session and nothing else.
+The integration cannot sign itself in again, by design and by necessity: the
+portal issues a fresh SMS code on every sign-in, so a stored password would buy
+nothing anyway.
+
+The config entry holds exactly this:
+
+```
+sid            the session cookie
+account_id     your water account number
+meter_serial   your meter's serial number
+address        the property address, used to name the device
+```
+
+The CSRF token the portal also requires is not stored at all. It is read from
+the portal on each page load, so it is always current.
+
+When the session eventually lapses, Home Assistant asks you to sign in again —
+email, password and a fresh code — and the new session replaces the old one in
+place. That is the only time your password is needed again.
+
+You can confirm all of this yourself:
+
+```bash
+python -c "import json;print(json.load(open('.storage/core.config_entries'))['data'])" | grep -i pass
+```
+
+run from your Home Assistant config directory. It finds nothing.
 
 ## Using it on the Water dashboard
 
