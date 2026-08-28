@@ -6,16 +6,25 @@ one generic dispatcher (``MyAccountGenericNavFWController.invokeMethod``). This
 module reproduces that call and nothing more; the domain-level wrappers live in
 ``api.py``.
 
-Requests need three things beyond the session cookie, and all three are read
-from the portal at runtime rather than stored:
+Requests need two things beyond the session cookie, and both are read from the
+portal at runtime rather than stored:
 
 * ``fwuid`` and the app descriptor, which identify the deployed framework
   version and rotate whenever Salesforce ships a release;
-* a CSRF token, which the portal delivers in a roundabout way. The page carries
-  an ``eikoocnekot`` field ("tokencookie" backwards) naming a ``__Host-`` cookie,
-  and that cookie holds the token. The browser reads it and deletes it; we
-  simply read it out of the cookie jar on every page load, which means the token
-  is always fresh and never needs persisting.
+* a CSRF token, which the portal hands over in one of two ways. Its own
+  bootstrap script picks between them like this::
+
+      cn = auraConfig["eikoocnekot"];
+      if (cn) { /* read the token out of the cookie named cn, then delete it */ }
+      else if (auraConfig["token"] == null) { auraConfig["csrfV2"] = true }
+
+  Signed-in pages take the first branch: an ``eikoocnekot`` field ("tokencookie"
+  backwards) names a ``__Host-`` cookie holding the token. Reading it from the
+  cookie jar on each page load keeps the token fresh and unstored.
+
+  The login page takes the second branch and issues no token cookie at all. The
+  server still insists the ``aura.token`` parameter be *present*, but does not
+  check its value, so an empty string is what a browser effectively sends there.
 """
 
 from __future__ import annotations
@@ -50,8 +59,9 @@ _LOGGER = logging.getLogger(__name__)
 _DESCRIPTOR_MARKER = "/sfsites/l/"
 _DESCRIPTOR_TAILS = ("/resources.js", "/app.js")
 
-# Names the cookie that carries the CSRF token.
-_TOKEN_COOKIE_RE = re.compile(r"eikoocnekot[\"'\\ :]+([A-Za-z0-9_.$%-]{4,})")
+# Names the cookie that carries the CSRF token. Matched as a JSON key so it
+# cannot latch onto the bootstrap script's own references to the same name.
+_TOKEN_COOKIE_RE = re.compile(r'"eikoocnekot"\s*:\s*"([^"]+)"')
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
@@ -98,6 +108,16 @@ def extract_descriptor(html: str) -> dict[str, Any]:
         except ValueError:
             continue
     raise YvwApiError("Could not find the Aura framework descriptor on the page")
+
+
+def token_cookie_name(html: str) -> str | None:
+    """Return the cookie a page says holds its CSRF token, if it names one.
+
+    Signed-in pages name one. The login page does not, and runs under csrfV2
+    instead, where the token value is unchecked.
+    """
+    match = _TOKEN_COOKIE_RE.search(html)
+    return match.group(1) if match else None
 
 
 def build_context(descriptor: dict[str, Any], app: str = AURA_APP) -> dict[str, Any]:
@@ -216,13 +236,17 @@ async def async_load_page_context(
     except aiohttp.ClientError as err:
         raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
 
-    match = _TOKEN_COOKIE_RE.search(html)
-    if match is None:
-        raise YvwApiError("The portal page did not name a CSRF token cookie")
-
-    token = read_cookie(session, match.group(1))
-    if not token:
-        raise YvwApiError("The portal did not issue a CSRF token cookie")
+    cookie_name = token_cookie_name(html)
+    if cookie_name is None:
+        # The csrfV2 path: no token cookie is issued and the value is not
+        # checked, but the parameter still has to be sent. This is how the
+        # login page works, so it is normal rather than a failure.
+        _LOGGER.debug("Page issued no CSRF token cookie; using the csrfV2 path")
+        token = ""
+    else:
+        token = read_cookie(session, cookie_name)
+        if not token:
+            raise YvwApiError("The portal named a CSRF token cookie but did not set it")
 
     return AuraContext(context=build_context(extract_descriptor(html), app), token=token)
 
