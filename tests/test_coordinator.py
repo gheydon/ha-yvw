@@ -21,6 +21,7 @@ from custom_components.yvw.const import (
     CONF_METER_SERIAL,
     CONF_SID,
     DOMAIN,
+    EVENT_AUTH_FAILED,
     EVENT_NEW_READINGS,
 )
 from custom_components.yvw.coordinator import YvwCoordinator
@@ -126,6 +127,46 @@ async def test_a_dead_session_asks_for_reauthentication(
         await coordinator._async_update_data()
 
     assert coordinator.keepalive_running is False
+
+
+async def test_a_dead_session_fires_an_event(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Recovering needs a person and an SMS code, so it is worth notifying."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_AUTH_FAILED, events.append)
+    coordinator = build_coordinator(hass, StubApi(error=YvwAuthError("gone")))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["detected_by"] == "poll"
+    assert events[0].data["meter_serial"] == METER
+    assert events[0].data["address"] == ADDRESS
+
+
+async def test_a_keepalive_that_finds_a_dead_session_fires_the_event(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Most lapses are noticed by the keep-alive, not by a poll."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_AUTH_FAILED, events.append)
+    api = StubApi()
+    api.async_ping = _raise_auth_error
+    coordinator = build_coordinator(hass, api)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["detected_by"] == "keepalive"
+    assert coordinator.keepalive_running is False
+
+
+async def _raise_auth_error(account_id: str) -> None:
+    raise YvwAuthError("gone")
 
 
 async def test_a_poll_counts_as_contact_so_no_ping_is_needed(

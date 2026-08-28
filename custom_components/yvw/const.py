@@ -107,3 +107,7 @@ STATUS_NOT_AVAILABLE = "Not available"
 # Fired once per poll that recorded new hours, so automations can react to
 # fresh consumption data rather than polling entities.
 EVENT_NEW_READINGS = f"{DOMAIN}_new_readings"
+
+# Fired when the portal session lapses. Re-authenticating needs a person and an
+# SMS code, so it is worth being able to notify rather than waiting to notice.
+EVENT_AUTH_FAILED = f"{DOMAIN}_auth_failed"

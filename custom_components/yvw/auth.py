@@ -53,7 +53,7 @@ _FORM_ACTION_RE = re.compile(r"<form\b[^>]*\baction\s*=\s*[\"']([^\"']*)[\"']", 
 
 # The code page splits the six digits across separately named fields.
 _DIGIT_FIELD_RE = re.compile(
-    r":(first|second|third|fourth|fifth|sixth)Hidden:", re.IGNORECASE
+    r"(first|second|third|fourth|fifth|sixth)Hidden", re.IGNORECASE
 )
 _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
@@ -77,6 +77,9 @@ _CLIENT_REDIRECT_RES = (
 # Enough to cover frontdoor bouncing into the community and on to the flow.
 _MAX_CLIENT_REDIRECTS = 6
 
+# Salesforce serves a login flow from a Visualforce page under /apex/.
+_LOGIN_FLOW_RE = re.compile(r"/apex/\w*LoginFlow\w*", re.IGNORECASE)
+
 
 def describe_url(url: str | None) -> str:
     """Describe a URL for the log without leaking anything sensitive.
@@ -92,6 +95,28 @@ def describe_url(url: str | None) -> str:
     masked = "&".join(f"{name}=<{len(value)} chars>" for name, value in params)
     location = parts.path if not parts.netloc else f"{parts.netloc}{parts.path}"
     return f"{location}?{masked}" if masked else location
+
+
+def describe_form(html: str) -> str:
+    """Summarise a page's form fields, for working out why parsing failed.
+
+    Field names and their shapes are not secrets, and they are the only thing
+    that identifies how a portal page expects to be filled in.
+    """
+    title = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    fields = [
+        "{name}[type={type},maxlength={maxlength}]".format(
+            name=attrs.get("name", "?"),
+            type=attrs.get("type", "text"),
+            maxlength=attrs.get("maxlength", "-"),
+        )
+        for attrs in _parse_inputs(html)
+    ]
+    return (
+        f"title={(title.group(1).strip() if title else '?')!r} "
+        f"forms={len(re.findall(r'<form', html, re.IGNORECASE))} "
+        f"inputs={len(fields)} :: " + " | ".join(fields[:40])
+    )
 
 
 def find_client_redirect(html: str) -> str | None:
@@ -127,41 +152,66 @@ def build_code_form(html: str, code: str) -> dict[str, str]:
     if not inputs:
         raise YvwApiError("The verification page had no form fields")
 
-    payload: dict[str, str] = {}
-    digit_fields: dict[str, str] = {}
-    submit_name: str | None = None
-
-    for attrs in inputs:
-        name = attrs["name"]
-        field_type = attrs.get("type", "text").lower()
-        if field_type == "submit":
-            # Visualforce identifies which button was pressed by its presence.
-            if submit_name is None:
-                submit_name = name
-                payload[name] = attrs.get("value", "")
-            continue
-        match = _DIGIT_FIELD_RE.search(name)
-        if match:
-            digit_fields[match.group(1).lower()] = name
-            continue
-        payload[name] = attrs.get("value", "")
-
-    if len(digit_fields) != CODE_LENGTH:
+    digit_names = find_code_fields(inputs)
+    if len(digit_names) != CODE_LENGTH:
         raise YvwApiError(
             f"Expected {CODE_LENGTH} code fields on the verification page, "
-            f"found {len(digit_fields)}"
+            f"found {len(digit_names)}"
         )
-    if submit_name is None:
-        raise YvwApiError("The verification page had no submit button")
 
     digits = [character for character in code if character.isdigit()]
     if len(digits) != CODE_LENGTH:
         raise YvwInvalidCode(f"The code must be {CODE_LENGTH} digits")
 
-    for position, digit in zip(_DIGIT_ORDER, digits, strict=True):
-        payload[digit_fields[position]] = digit
+    payload: dict[str, str] = {}
+    submit_name: str | None = None
+    for attrs in inputs:
+        name = attrs["name"]
+        if name in digit_names:
+            continue
+        if attrs.get("type", "text").lower() == "submit":
+            # Visualforce identifies which button was pressed by its presence.
+            if submit_name is None:
+                submit_name = name
+                payload[name] = attrs.get("value", "")
+            continue
+        payload[name] = attrs.get("value", "")
+
+    if submit_name is None:
+        raise YvwApiError("The verification page had no submit button")
+
+    for name, digit in zip(digit_names, digits, strict=True):
+        payload[name] = digit
 
     return payload
+
+
+def find_code_fields(inputs: list[dict[str, str]]) -> list[str]:
+    """Return the fields the code digits go into, in order.
+
+    The page splits the code one digit per field. Their names were read from a
+    browser, where scripts had already rewritten them, so they are located by
+    shape rather than trusted to be spelled a particular way: first by the
+    ordinal naming the page uses, then by falling back to a run of
+    single-character inputs, which is what a code entry looks like anywhere.
+    """
+    ordinals: dict[str, str] = {}
+    for attrs in inputs:
+        match = _DIGIT_FIELD_RE.search(attrs["name"])
+        if match:
+            ordinals.setdefault(match.group(1).lower(), attrs["name"])
+    if len(ordinals) == CODE_LENGTH:
+        return [ordinals[position] for position in _DIGIT_ORDER]
+
+    single_character = [
+        attrs["name"]
+        for attrs in inputs
+        if attrs.get("maxlength") == "1" and attrs.get("type", "text").lower() != "submit"
+    ]
+    if len(single_character) == CODE_LENGTH:
+        return single_character
+
+    return list(ordinals.values()) or single_character
 
 
 class YvwLogin:
@@ -355,8 +405,22 @@ class YvwLogin:
                 url = urljoin(final_url, redirect)
                 continue
 
-            # No onward hop. Either the portal signed us straight in, or the
-            # chain stopped somewhere unexpected.
+            # No onward hop. Landing on the login flow itself means the code
+            # was sent but the page could not be read, which must not be
+            # mistaken for not needing one: that would skip code entry and fail
+            # later with something unrelated.
+            if _LOGIN_FLOW_RE.search(final_url):
+                _LOGGER.error(
+                    "Reached the verification page but could not find the code "
+                    "fields. %s",
+                    describe_form(html),
+                )
+                raise YvwApiError(
+                    "A code was sent, but the verification page could not be read. "
+                    "The portal has probably changed its form; the debug log lists "
+                    "the fields it offered"
+                )
+
             if read_cookie(self._session, "sid"):
                 _LOGGER.debug("Signed in without a verification step")
                 self._code_page_html = None

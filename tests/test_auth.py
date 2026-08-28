@@ -136,7 +136,12 @@ class FakeSession:
         return []
 
 
-DO_LOGIN_OK = {"mfaType": "SMS", "pageUrl": "/myaccount/apex/MALoginFlowVFPage?retURL=%2F"}
+# doLogin hands back frontdoor.jsp, which trades its session id for cookies and
+# then bounces onward from script.
+DO_LOGIN_OK = {
+    "mfaType": "SMS",
+    "pageUrl": "/myaccount/secur/frontdoor.jsp?sid=abc&retURL=%2Fmyaccount%2Fs%2F",
+}
 
 
 async def _login_with(monkeypatch, session, result=DO_LOGIN_OK):
@@ -167,8 +172,9 @@ async def test_the_code_page_is_fetched_during_the_password_step(monkeypatch) ->
     login, mfa_type = await _login_with(monkeypatch, session)
 
     assert mfa_type == "SMS"
+    # The chain starts at frontdoor.jsp, which is where the session is minted.
     assert len(session.gets) == 1
-    assert "MALoginFlowVFPage" in session.gets[0]
+    assert "frontdoor.jsp" in session.gets[0]
 
 
 async def test_submitting_a_code_does_not_refetch_the_page(monkeypatch) -> None:
@@ -299,3 +305,37 @@ async def test_a_chain_that_stops_short_is_an_error(monkeypatch) -> None:
     session = HopSession(["<html>dead end</html>"], cookies=[])
     with pytest.raises(_ApiError, match="without reaching"):
         await _login_with(monkeypatch, session)
+
+
+async def test_an_unreadable_flow_page_is_not_mistaken_for_no_code(monkeypatch) -> None:
+    """The code has been sent by this point, so skipping entry strands the user.
+
+    Treating it as 'no verification needed' fails later with something
+    unrelated, which is exactly what happened in the field.
+    """
+    from custom_components.yvw.exceptions import YvwApiError as _ApiError
+
+    session = HopSession(
+        [FRONTDOOR_BOUNCE, META_BOUNCE, "<html><body>Enter your code</body></html>"],
+        cookies=["sid"],
+    )
+    with pytest.raises(_ApiError, match="A code was sent"):
+        await _login_with(monkeypatch, session)
+
+
+def test_code_fields_are_found_by_shape_when_the_names_differ() -> None:
+    """The ordinal names came from a browser DOM, not the served markup."""
+    page = (
+        '<form action="/x"><input type="hidden" name="com.salesforce.visualforce.ViewState"'
+        ' value="STATE" />'
+        + "".join(
+            f'<input type="text" name="code_{index}" maxlength="1" />' for index in range(6)
+        )
+        + '<input type="submit" name="go" value="Submit" /></form>'
+    )
+
+    payload = build_code_form(page, "246810")
+
+    assert [payload[f"code_{index}"] for index in range(6)] == list("246810")
+    assert payload["com.salesforce.visualforce.ViewState"] == "STATE"
+    assert payload["go"] == "Submit"

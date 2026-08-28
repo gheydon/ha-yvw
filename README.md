@@ -77,6 +77,29 @@ The event carries `count`, `litres`, `first_hour`, `last_hour`, `statistic_id`,
 `meter_serial`, `account_id`, `address` and `entry_id`. Hours are the start of
 the interval, in local time.
 
+A `yvw_auth_failed` event fires when the session lapses. Getting it back needs a
+person and an SMS code, so it is worth being told rather than noticing later
+that readings stopped:
+
+```yaml
+automation:
+  - alias: Yarra Valley Water needs signing in again
+    triggers:
+      - trigger: event
+        event_type: yvw_auth_failed
+    actions:
+      - action: notify.persistent_notification
+        data:
+          title: Yarra Valley Water session expired
+          message: >
+            Sign in again to resume water readings
+            (lapsed after {{ trigger.event.data.session_age }}).
+```
+
+It carries `detected_by` (`poll` or `keepalive`), `session_age`, `last_contact`,
+and the same identifying fields. Home Assistant also raises its own repair and
+re-authentication prompt at the same moment.
+
 ## Keeping the session alive
 
 The portal has no API keys and no OAuth, and it sends a verification code on

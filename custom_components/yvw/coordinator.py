@@ -20,6 +20,7 @@ from .const import (
     CONF_KEEPALIVE_MINUTES,
     DEFAULT_KEEPALIVE_MINUTES,
     DOMAIN,
+    EVENT_AUTH_FAILED,
     EVENT_NEW_READINGS,
     KEEPALIVE_JITTER,
     MAX_HISTORY_DAYS,
@@ -169,6 +170,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self.keepalive_interval,
             )
             self.async_stop_keepalive()
+            self._async_fire_auth_failed("keepalive")
             self.config_entry.async_start_reauth(self.hass)
             return
         except YvwError as err:
@@ -207,6 +209,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self._session_age(),
             )
             self.async_stop_keepalive()
+            self._async_fire_auth_failed("poll")
             raise ConfigEntryAuthFailed(str(err)) from err
         except YvwError as err:
             raise UpdateFailed(str(err)) from err
@@ -224,6 +227,28 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._async_fire_new_readings(added)
 
         return self._summarise(readings)
+
+    @callback
+    def _async_fire_auth_failed(self, detected_by: str) -> None:
+        """Announce that the session has lapsed and a person is needed.
+
+        Recovering means signing in again with an SMS code, so this is worth
+        acting on rather than waiting to notice missing readings.
+        """
+        self.hass.bus.async_fire(
+            EVENT_AUTH_FAILED,
+            {
+                "entry_id": self.config_entry.entry_id,
+                "account_id": self.account_id,
+                "meter_serial": self.meter_serial,
+                "address": self.address,
+                "detected_by": detected_by,
+                "session_age": str(self._session_age()),
+                "last_contact": (
+                    self._last_contact.isoformat() if self._last_contact else None
+                ),
+            },
+        )
 
     @callback
     def _async_fire_new_readings(self, added: list[UsageReading]) -> None:
