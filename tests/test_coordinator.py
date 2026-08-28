@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from homeassistant.components.recorder import Recorder
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState, Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -509,3 +510,31 @@ async def test_a_timed_out_ping_is_also_retried_soon(
         await coordinator._async_keepalive(datetime.now(MELBOURNE))
 
     assert delays[0] == KEEPALIVE_RETRY.total_seconds()
+
+
+async def test_an_expiry_found_during_startup_still_reaches_automations(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Config entries set up before automations are listening.
+
+    A session found expired on the first poll after a restart is exactly that
+    case, and is the one most worth being told about — firing it into an empty
+    bus loses the alert entirely.
+    """
+    hass.set_state(CoreState.starting)
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_AUTH_FAILED, events.append)
+    coordinator = build_coordinator(hass, StubApi(error=YvwAuthError("gone")))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+    await hass.async_block_till_done()
+
+    assert events == [], "fired before anything could be listening"
+
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["detected_by"] == "poll"

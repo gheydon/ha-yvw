@@ -7,12 +7,14 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
+from typing import Any
 
 from homeassistant.components.logbook import async_log_entry
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -370,6 +372,25 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         return self._summarise(readings)
 
     @callback
+    def _async_fire(self, event_type: str, data: dict[str, Any]) -> None:
+        """Fire an event, waiting for startup to finish if it has not.
+
+        Config entries are set up before automations are listening, so an event
+        fired during startup reaches nobody. A session found expired on the
+        first poll after a restart is exactly that case, and is the one most
+        worth being told about.
+        """
+        if self.hass.state is CoreState.running:
+            self.hass.bus.async_fire(event_type, data)
+            return
+
+        @callback
+        def _fire_when_started(_hass: HomeAssistant) -> None:
+            self.hass.bus.async_fire(event_type, data)
+
+        async_at_started(self.hass, _fire_when_started)
+
+    @callback
     def _async_fire_keepalive(
         self, outcome: str, idle_minutes: int, error: str | None = None
     ) -> None:
@@ -380,7 +401,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         fired when a wake-up is skipped because a poll already touched the
         portal — nothing was asked of it, so there is no outcome to report.
         """
-        self.hass.bus.async_fire(
+        self._async_fire(
             EVENT_KEEPALIVE,
             {
                 "entry_id": self.config_entry.entry_id,
@@ -403,7 +424,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         Recovering means signing in again with an SMS code, so this is worth
         acting on rather than waiting to notice missing readings.
         """
-        self.hass.bus.async_fire(
+        self._async_fire(
             EVENT_AUTH_FAILED,
             {
                 "entry_id": self.config_entry.entry_id,
@@ -421,7 +442,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     @callback
     def _async_fire_new_readings(self, added: list[UsageReading]) -> None:
         """Announce newly recorded hours so automations can act on them."""
-        self.hass.bus.async_fire(
+        self._async_fire(
             EVENT_NEW_READINGS,
             {
                 "entry_id": self.config_entry.entry_id,
