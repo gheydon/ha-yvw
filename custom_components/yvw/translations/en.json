@@ -31,6 +31,13 @@
         "data": {
           "account_id": "Property"
         }
+      },
+      "account": {
+        "title": "Which account?",
+        "description": "Your water account number could not be read automatically. It is the 10-digit number on your Yarra Valley Water bill, and is shown at the top of the portal next to your address.",
+        "data": {
+          "account_id": "Account number"
+        }
       }
     },
     "error": {
@@ -39,7 +46,9 @@
       "invalid_code": "That verification code was not accepted. Codes can only be used once, so check you are using the newest message, or request a new code.",
       "unknown": "Something went wrong signing in. Check the logs for details.",
       "code_required": "Enter the verification code, or tick 'Send a new code'.",
-      "code_resent": "A new code has been sent. Enter it below."
+      "code_resent": "A new code has been sent. Enter it below.",
+      "invalid_account": "Enter the account number as digits.",
+      "unknown_account": "The portal did not recognise that account number for this login."
     },
     "abort": {
       "already_configured": "This water account is already set up.",

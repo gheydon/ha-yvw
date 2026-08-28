@@ -52,7 +52,6 @@ from .const import (
     PORTAL_TIMEZONE,
 )
 from .exceptions import (
-    YvwApiError,
     YvwCannotConnect,
     YvwError,
     YvwInvalidAuth,
@@ -199,13 +198,49 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_account")
 
         if not self._sites:
-            return self.async_abort(reason="no_account")
+            # The portal only volunteers the account number once its own app has
+            # run and populated a cache, which a plain client never does. The
+            # number is on every bill and on the portal's own pages, so asking
+            # for it beats abandoning a sign-in that otherwise worked.
+            _LOGGER.debug("No account discovered from the session; asking for the number")
+            return await self.async_step_account()
 
         if self.source == "reauth":
             # Reauth is about replacing a dead session, not changing property.
             return await self._async_store(self._get_reauth_entry().data[CONF_ACCOUNT_ID])
 
         return await self.async_step_site()
+
+    async def async_step_account(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the water account number when it cannot be discovered."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            account_id = "".join(
+                character
+                for character in user_input[CONF_ACCOUNT_ID]
+                if character.isdigit()
+            )
+            if not account_id:
+                errors[CONF_ACCOUNT_ID] = "invalid_account"
+            else:
+                assert self._sid is not None
+                try:
+                    site = await self._async_read_account(self._sid, account_id)
+                except YvwError as err:
+                    _LOGGER.debug("Could not read account %s: %s", account_id, err)
+                    errors[CONF_ACCOUNT_ID] = "unknown_account"
+                else:
+                    self._sites = {site.account_id: site}
+                    return await self._async_store(site.account_id)
+
+        return self.async_show_form(
+            step_id="account",
+            data_schema=vol.Schema({vol.Required(CONF_ACCOUNT_ID): str}),
+            errors=errors,
+        )
 
     async def async_step_site(
         self, user_input: dict[str, Any] | None = None
@@ -289,21 +324,24 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                 len(html),
             )
 
-    async def _async_discover(self, sid: str) -> dict[str, AccountInfo]:
-        """Read every water account this login can see."""
+    async def _async_api(self, sid: str) -> YvwApi:
+        """Build an API client for a freshly signed-in session."""
         session = async_create_clientsession(self.hass)
-        client = YvwAuraClient(session, sid)
         portal_tz = await dt_util.async_get_time_zone(PORTAL_TIMEZONE)
-        api = YvwApi(client, portal_tz)
+        return YvwApi(YvwAuraClient(session, sid), portal_tz)
 
-        account_ids = await api.async_list_account_ids()
-        if not account_ids:
-            raise YvwApiError("The portal did not report any water accounts")
+    async def _async_discover(self, sid: str) -> dict[str, AccountInfo]:
+        """Read every water account this login can see, if the portal says."""
+        api = await self._async_api(sid)
+        return {
+            account_id: await api.async_get_account(account_id)
+            for account_id in await api.async_list_account_ids()
+        }
 
-        sites: dict[str, AccountInfo] = {}
-        for account_id in account_ids:
-            sites[account_id] = await api.async_get_account(account_id)
-        return sites
+    async def _async_read_account(self, sid: str, account_id: str) -> AccountInfo:
+        """Read one account by number."""
+        api = await self._async_api(sid)
+        return await api.async_get_account(account_id)
 
 
 class YvwOptionsFlow(OptionsFlow):
