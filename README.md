@@ -1,5 +1,12 @@
 # Yarra Valley Water for Home Assistant
 
+[![HACS: custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Release](https://img.shields.io/github/v/release/gheydon/ha-yvw?display_name=tag&sort=semver)](https://github.com/gheydon/ha-yvw/releases)
+[![Validate](https://github.com/gheydon/ha-yvw/actions/workflows/validate.yml/badge.svg)](https://github.com/gheydon/ha-yvw/actions/workflows/validate.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
+[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gheydon&repository=ha-yvw&category=integration)
+
 Brings the hourly readings from a Yarra Valley Water digital meter into Home
 Assistant, and writes them into long-term statistics so they show up on the
 Water dashboard — including the hours that were recorded before Home Assistant
@@ -11,7 +18,10 @@ one.
 
 ## Installing
 
-HACS → three-dot menu → **Custom repositories** → add
+Click the button above, which opens this repository straight in HACS on your own
+Home Assistant. Then install "Yarra Valley Water" and restart.
+
+By hand: HACS → three-dot menu → **Custom repositories** → add
 `https://github.com/gheydon/ha-yvw` with category **Integration**, then install
 "Yarra Valley Water" and restart Home Assistant.
 
@@ -20,7 +30,9 @@ and restart.
 
 ## Setting up
 
-**Settings → Devices & services → Add integration → Yarra Valley Water.**
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yvw)
+
+Or: **Settings → Devices & services → Add integration → Yarra Valley Water.**
 
 1. Enter your MyAccount email and password.
 2. Enter the verification code Yarra Valley Water texts you. Each code works
