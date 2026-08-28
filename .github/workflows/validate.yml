@@ -24,6 +24,9 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # Brand assets are only required for the HACS default store; this is
+          # installed as a custom repository.
+          ignore: brands
 
   tests:
     name: ruff + pytest
