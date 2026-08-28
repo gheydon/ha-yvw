@@ -23,8 +23,13 @@ and restart.
 **Settings → Devices & services → Add integration → Yarra Valley Water.**
 
 1. Enter your MyAccount email and password.
-2. Enter the verification code Yarra Valley Water texts you.
-3. Choose the property to follow.
+2. Enter the verification code Yarra Valley Water texts you. Each code works
+   once, so use the newest message.
+3. Choose the property to follow, or enter your account number if asked.
+
+The portal only names your account once its own web app has run and cached it,
+which a background client never does, so setup may ask for the number. It is the
+10-digit number on your bill, shown on the portal beside your address.
 
 Your password is used once, to sign in. It is **not stored** — only the
 resulting session is kept, because the portal demands a fresh code every time
@@ -35,6 +40,11 @@ back in anyway.
 
 **Settings → Dashboards → Energy → Water → Add water source**, and pick
 **`<your address> water consumption`**.
+
+Past readings will not show on an entity's History graph: they are long-term
+statistics, which live on the Water dashboard and under **Developer Tools →
+Statistics**. Readings arrive about a day late, so scroll back a day to see
+them.
 
 Use that statistic, not the sensors. The sensors exist to show you the latest
 figures at a glance; the statistic is the complete hourly history. Adding both
