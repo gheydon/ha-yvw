@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 import aiohttp
 
@@ -57,6 +57,22 @@ _DIGIT_FIELD_RE = re.compile(
 _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
 CODE_LENGTH = len(_DIGIT_ORDER)
+
+
+def describe_url(url: str | None) -> str:
+    """Describe a URL for the log without leaking anything sensitive.
+
+    The portal can hand back a URL carrying a one-time session token, which must
+    not reach a log file. The path and the parameter names are what matter for
+    working out where a sign-in went wrong, so values are masked.
+    """
+    if not url:
+        return "<none>"
+    parts = urlsplit(url)
+    params = parse_qsl(parts.query, keep_blank_values=True)
+    masked = "&".join(f"{name}=<{len(value)} chars>" for name, value in params)
+    location = parts.path if not parts.netloc else f"{parts.netloc}{parts.path}"
+    return f"{location}?{masked}" if masked else location
 
 
 def _parse_inputs(html: str) -> list[dict[str, str]]:
@@ -173,20 +189,24 @@ class YvwLogin:
         if not isinstance(result, dict):
             raise YvwInvalidAuth("The portal rejected that email address or password")
 
+        page_url = result.get("pageUrl")
+
         _LOGGER.debug(
-            "doLogin returned keys=%s mfaType=%s cookies=%s",
+            "doLogin returned keys=%s mfaType=%s pageUrl=%s cookies=%s",
             sorted(result),
             result.get("mfaType"),
+            describe_url(page_url),
             sorted({cookie.key for cookie in self._session.cookie_jar}),
         )
 
-        page_url = result.get("pageUrl")
         if not page_url:
             # No verification step; the session cookie should already be set.
             self._code_page_url = None
             return None
 
-        self._code_page_url = urljoin(BASE_URL, page_url)
+        # A relative path without a leading slash would resolve against the bare
+        # host and land somewhere else entirely, so anchor it on the login page.
+        self._code_page_url = urljoin(LOGIN_PAGE, page_url)
 
         # Loading the verification page is what makes the portal send the code:
         # the browser gets there by navigation, so nothing is sent until the
