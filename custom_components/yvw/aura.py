@@ -309,7 +309,15 @@ async def async_load_page_context(
         if not token:
             raise YvwApiError("The portal named a CSRF token cookie but did not set it")
 
-    return AuraContext(context=build_context(extract_descriptor(html), app), token=token)
+    try:
+        descriptor = extract_descriptor(html)
+    except YvwApiError as err:
+        # Naming where it landed turns this into something actionable: a session
+        # parked on Salesforce's loginFlowOnly page means a verification step is
+        # still outstanding, not that the page is unreadable.
+        raise YvwApiError(f"{err} (loaded {describe_url(final_url)})") from err
+
+    return AuraContext(context=build_context(descriptor, app), token=token)
 
 
 class YvwAuraClient:

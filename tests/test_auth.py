@@ -339,3 +339,41 @@ def test_code_fields_are_found_by_shape_when_the_names_differ() -> None:
     assert [payload[f"code_{index}"] for index in range(6)] == list("246810")
     assert payload["com.salesforce.visualforce.ViewState"] == "STATE"
     assert payload["go"] == "Submit"
+
+
+async def test_a_refused_code_is_reported_as_such(monkeypatch) -> None:
+    """The portal re-renders the form rather than saying no in any other way.
+
+    Reporting it as an unexpected error hides the one thing the user can act
+    on, which is that the code did not take.
+    """
+    session = HopSession([FRONTDOOR_BOUNCE, META_BOUNCE, CODE_PAGE], cookies=["sid"])
+    login, _ = await _login_with(monkeypatch, session)
+
+    # The postback comes back showing the code form again.
+    session._post_body = CODE_PAGE
+
+    with pytest.raises(YvwInvalidCode):
+        await login.async_submit_code("123456")
+
+
+def test_hidden_code_fields_are_preferred_over_visible_boxes() -> None:
+    """Scripts copy what is typed into hidden fields, and those get posted.
+
+    Filling only the visible boxes posts six empty hidden fields, which the
+    portal reads as no code at all.
+    """
+    page = (
+        '<form action="/x"><input type="hidden" name="ViewState" value="S" />'
+        + "".join(
+            f'<input type="text" name="visible_{i}" maxlength="1" />'
+            f'<input type="hidden" name="store_{i}" maxlength="1" />'
+            for i in range(6)
+        )
+        + '<input type="submit" name="go" value="Submit" /></form>'
+    )
+
+    payload = build_code_form(page, "123456")
+
+    assert [payload[f"store_{i}"] for i in range(6)] == list("123456")
+    assert all(payload[f"visible_{i}"] == "" for i in range(6))

@@ -160,17 +160,32 @@ def find_code_fields(inputs: list[dict[str, str]]) -> list[str]:
         if match:
             ordinals.setdefault(match.group(1).lower(), attrs["name"])
     if len(ordinals) == CODE_LENGTH:
-        return [ordinals[position] for position in _DIGIT_ORDER]
+        chosen = [ordinals[position] for position in _DIGIT_ORDER]
+        _LOGGER.debug("Code fields found by ordinal naming: %s", chosen)
+        return chosen
 
+    # The visible boxes are the ones a person types into, but the page may post
+    # the digits from hidden fields its scripts copy them into, so prefer any
+    # hidden candidates over the visible ones.
     single_character = [
-        attrs["name"]
+        attrs
         for attrs in inputs
         if attrs.get("maxlength") == "1" and attrs.get("type", "text").lower() != "submit"
     ]
-    if len(single_character) == CODE_LENGTH:
-        return single_character
+    hidden = [a["name"] for a in single_character if a.get("type", "").lower() == "hidden"]
+    visible = [a["name"] for a in single_character if a.get("type", "").lower() != "hidden"]
+    for label, candidates in (("hidden", hidden), ("visible", visible)):
+        if len(candidates) == CODE_LENGTH:
+            _LOGGER.debug("Code fields found by shape (%s): %s", label, candidates)
+            return candidates
 
-    return list(ordinals.values()) or single_character
+    _LOGGER.warning(
+        "Could not identify the code fields. ordinals=%s hidden=%s visible=%s",
+        sorted(ordinals.values()),
+        hidden,
+        visible,
+    )
+    return list(ordinals.values()) or visible or hidden
 
 
 class YvwLogin:
@@ -292,12 +307,22 @@ class YvwLogin:
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
 
-        # A rejected code re-renders the page with a fresh view state. Keeping
-        # it lets the user try again without the portal having to text them a
-        # new code.
+        # A rejected code re-renders the code form. Keeping the response lets
+        # the user try again on a fresh view state without the portal having to
+        # text them another code.
         if _DIGIT_FIELD_RE.search(returned):
             self._code_page_html = returned
+            _LOGGER.debug(
+                "The code was not accepted; the form came back. %s",
+                describe_form(returned),
+            )
+            raise YvwInvalidCode("The portal did not accept that verification code")
 
+        _LOGGER.debug(
+            "Code accepted; portal responded with %s bytes, next=%s",
+            len(returned),
+            describe_url(find_client_redirect(returned)),
+        )
         return await self.async_finish()
 
     async def async_finish(self) -> str:
@@ -306,6 +331,14 @@ class YvwLogin:
             await async_load_page_context(self._session, USAGE_PAGE)
         except YvwAuthError as err:
             raise YvwInvalidCode("The portal did not accept that verification code") from err
+        except YvwApiError as err:
+            # Salesforce parks a session with an unfinished login flow on
+            # loginFlowOnly, so landing there means the code never took.
+            if "loginflow" in str(err).lower():
+                raise YvwInvalidCode(
+                    "The verification step was not completed, so the code was not accepted"
+                ) from err
+            raise
 
         sid = read_cookie(self._session, "sid")
         if not sid:
