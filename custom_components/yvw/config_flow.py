@@ -36,7 +36,7 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.util import dt as dt_util
 
-from .api import AccountInfo, YvwApi
+from .api import AccountInfo, AccountSummary, YvwApi
 from .aura import YvwAuraClient
 from .auth import CODE_LENGTH, YvwLogin
 from .const import (
@@ -100,7 +100,8 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         """Set up flow state that spans the sign-in steps."""
         self._login: YvwLogin | None = None
         self._sid: str | None = None
-        self._sites: dict[str, AccountInfo] = {}
+        self._summaries: list[AccountSummary] = []
+        self._site: AccountInfo | None = None
         self._code_error: str | None = None
 
     async def async_step_user(
@@ -195,22 +196,23 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._login is not None
         try:
             self._sid = await self._login.async_finish()
-            self._sites = await self._async_discover(self._sid)
+            self._summaries = await self._async_discover(self._sid)
         except YvwError as err:
             _LOGGER.error("Signed in but could not read the account: %s", err)
             return self.async_abort(reason="no_account")
 
-        if not self._sites:
-            # The portal only volunteers the account number once its own app has
-            # run and populated a cache, which a plain client never does. The
-            # number is on every bill and on the portal's own pages, so asking
-            # for it beats abandoning a sign-in that otherwise worked.
-            _LOGGER.debug("No account discovered from the session; asking for the number")
+        if self.source == "reauth":
+            # Reauth replaces a dead session; the property does not change.
+            return await self._async_store(self._get_reauth_entry().data[CONF_ACCOUNT_ID])
+
+        if not self._summaries:
+            # Nothing to choose between, so ask for the number instead of
+            # abandoning a sign-in that otherwise worked.
+            _LOGGER.debug("The portal listed no accounts; asking for the number")
             return await self.async_step_account()
 
-        if self.source == "reauth":
-            # Reauth is about replacing a dead session, not changing property.
-            return await self._async_store(self._get_reauth_entry().data[CONF_ACCOUNT_ID])
+        if len(self._summaries) == 1:
+            return await self._async_store(self._summaries[0].account_id)
 
         return await self.async_step_site()
 
@@ -236,7 +238,6 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                     _LOGGER.debug("Could not read account %s: %s", account_id, err)
                     errors[CONF_ACCOUNT_ID] = "unknown_account"
                 else:
-                    self._sites = {site.account_id: site}
                     return await self._async_store(site.account_id)
 
         return self.async_show_form(
@@ -248,20 +249,14 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_site(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask which property to follow.
-
-        One login can cover several properties, and even with a single one it is
-        worth showing the address so it is obvious what is being set up.
-        """
+        """Ask which property to follow."""
         if user_input is not None:
             return await self._async_store(user_input[CONF_ACCOUNT_ID])
 
+        # Current accounts first: a closed one has no meter still reporting.
+        ordered = sorted(self._summaries, key=lambda site: not site.active)
         options = [
-            SelectOptionDict(
-                value=account_id,
-                label=f"{site.address} ({account_id})",
-            )
-            for account_id, site in self._sites.items()
+            SelectOptionDict(value=site.account_id, label=site.label) for site in ordered
         ]
         schema = vol.Schema(
             {
@@ -273,10 +268,14 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="site", data_schema=schema)
 
     async def _async_store(self, account_id: str) -> ConfigFlowResult:
-        """Persist the chosen site and its session."""
-        site = self._sites.get(account_id)
-        if site is None:
-            return self.async_abort(reason="wrong_account")
+        """Read the chosen property's meter details and persist the entry."""
+        assert self._sid is not None
+        try:
+            site = await self._async_read_account(self._sid, account_id)
+        except YvwError as err:
+            _LOGGER.error("Could not read account %s: %s", account_id, err)
+            return self.async_abort(reason="no_account")
+
         if not site.meter_serial:
             return self.async_abort(reason="no_meter")
 
@@ -333,13 +332,10 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         portal_tz = await dt_util.async_get_time_zone(PORTAL_TIMEZONE)
         return YvwApi(YvwAuraClient(session, sid), portal_tz)
 
-    async def _async_discover(self, sid: str) -> dict[str, AccountInfo]:
-        """Read every water account this login can see, if the portal says."""
+    async def _async_discover(self, sid: str) -> list[AccountSummary]:
+        """Ask the portal which properties this login covers."""
         api = await self._async_api(sid)
-        return {
-            account_id: await api.async_get_account(account_id)
-            for account_id in await api.async_list_account_ids()
-        }
+        return await api.async_list_accounts()
 
     async def _async_read_account(self, sid: str, account_id: str) -> AccountInfo:
         """Read one account by number."""

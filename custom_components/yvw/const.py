@@ -34,6 +34,11 @@ APEX_CACHE_CLASS = "MyAccountPlatformCacheController"
 APEX_CACHE_METHOD = "getCache"
 APEX_CACHE_KEY = "payload"
 
+# Lists every account the signed-in person holds, with no arguments. This is
+# what the portal's account switcher uses.
+APEX_ACCOUNTS_CLASS = "MyAccountGetAccountController"
+APEX_ACCOUNTS_METHOD = "getAccountsForPerson"
+
 # Called with no arguments: the portal works out which account is meant from the
 # session, so its answer names the account when the cache does not.
 APEX_BALANCE_CLASS = "MyAccountBalanceController"
@@ -76,13 +81,13 @@ CONF_ADDRESS = "address"
 #
 # When true, the diagnostics download carries the live session cookie in the
 # clear so a maintainer can reproduce a problem against a real account. It is
-# here to work out how the portal presents a login covering several properties,
-# which cannot be done without such an account.
+# It was here to work out how the portal presents a login covering several
+# properties. That is now answered, so it is off; leave it off.
 #
 # Anyone holding that cookie has the account until the session lapses, and
 # diagnostics are routinely attached to public issues. Set this to False once
 # the multi-property case has been worked out.
-INCLUDE_SESSION_IN_DIAGNOSTICS = True
+INCLUDE_SESSION_IN_DIAGNOSTICS = False
 
 # --- Behaviour --------------------------------------------------------------
 

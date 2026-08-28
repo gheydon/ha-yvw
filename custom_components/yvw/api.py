@@ -14,6 +14,8 @@ from typing import Any
 
 from .aura import YvwAuraClient
 from .const import (
+    APEX_ACCOUNTS_CLASS,
+    APEX_ACCOUNTS_METHOD,
     APEX_BALANCE_CLASS,
     APEX_BALANCE_METHOD,
     APEX_CACHE_CLASS,
@@ -53,6 +55,26 @@ class UsageReading:
 
 
 @dataclass(frozen=True, slots=True)
+class AccountSummary:
+    """One of the properties a login covers, as the switcher lists them."""
+
+    account_id: str
+    address: str
+    status: str
+
+    @property
+    def active(self) -> bool:
+        """Return whether this is a current account rather than a closed one."""
+        return self.status.casefold() == "active"
+
+    @property
+    def label(self) -> str:
+        """Describe the property for a chooser."""
+        suffix = "" if self.active else f", {self.status.lower()}"
+        return f"{self.address} ({self.account_id}{suffix})"
+
+
+@dataclass(frozen=True, slots=True)
 class AccountInfo:
     """The details of a water account needed to poll it."""
 
@@ -69,6 +91,44 @@ class YvwApi:
         """Store the transport and the timezone the portal reports readings in."""
         self._client = client
         self._tz = portal_tz
+
+    async def async_list_accounts(self) -> list[AccountSummary]:
+        """Return every property the signed-in person holds.
+
+        This is the call the portal's own account switcher makes, so it answers
+        without needing an account number to start from.
+        """
+        value = await self._client.async_invoke_apex(
+            APEX_ACCOUNTS_CLASS, APEX_ACCOUNTS_METHOD, {}
+        )
+        rows = (value or {}).get("data") or []
+        meta = (value or {}).get("meta") or {}
+
+        accounts = [
+            AccountSummary(
+                account_id=str(row["accountId"]),
+                address=(row.get("location") or {}).get("address") or str(row["accountId"]),
+                status=str(row.get("status") or "Unknown"),
+            )
+            for row in rows
+            if row.get("accountId")
+        ]
+
+        # The response is paged and nothing observed has needed a second page,
+        # so say so rather than silently showing a partial list.
+        try:
+            pages = int(meta.get("totalPages", 1))
+        except (TypeError, ValueError):
+            pages = 1
+        if pages > 1:
+            _LOGGER.warning(
+                "The portal reports %s pages of accounts; only the first is listed. "
+                "Enter the account number by hand if the one you want is missing",
+                pages,
+            )
+
+        _LOGGER.debug("Portal lists %s account(s)", len(accounts))
+        return accounts
 
     async def async_list_account_ids(self) -> list[str]:
         """Return every water account the signed-in user can see.

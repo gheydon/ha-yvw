@@ -15,7 +15,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.yvw.api import AccountInfo
+from custom_components.yvw.api import AccountInfo, AccountSummary
 from custom_components.yvw.const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
@@ -48,11 +48,17 @@ def _login(**kwargs) -> AsyncMock:
     return login
 
 
-def _api(account_ids: list[str] | None = None) -> AsyncMock:
+SUMMARY = AccountSummary(
+    account_id=ACCOUNT, address=SITE.address, status="Active"
+)
+OTHER = AccountSummary(
+    account_id="9876543210", address="9 Other Walk, Elsewhere, Vic, 3064", status="Inactive"
+)
+
+
+def _api(accounts: list[AccountSummary] | None = None) -> AsyncMock:
     api = AsyncMock()
-    api.async_list_account_ids.return_value = (
-        [ACCOUNT] if account_ids is None else account_ids
-    )
+    api.async_list_accounts.return_value = [SUMMARY] if accounts is None else accounts
     api.async_get_account.return_value = SITE
     return api
 
@@ -146,7 +152,7 @@ async def test_the_account_number_is_asked_for_when_undiscoverable(
     recorder_mock: Recorder, hass: HomeAssistant, custom_integration
 ) -> None:
     """The portal will not always name the account, so setup asks."""
-    result = await _run(hass, _login(), _api(account_ids=[]))
+    result = await _run(hass, _login(), _api(accounts=[]))
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "account"
@@ -160,7 +166,7 @@ async def test_a_typed_account_number_is_accepted(
     entered: str,
 ) -> None:
     """People copy the number off a bill, spaces and all."""
-    api = _api(account_ids=[])
+    api = _api(accounts=[])
     with (
         patch("custom_components.yvw.config_flow.YvwLogin", return_value=_login()),
         patch("custom_components.yvw.config_flow.YvwApi", return_value=api),
@@ -182,3 +188,31 @@ async def test_a_typed_account_number_is_accepted(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_ACCOUNT_ID] == ACCOUNT
+
+
+async def test_a_single_property_is_chosen_without_asking(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Most logins cover one property; do not make them pick from a list of one."""
+    result = await _run(hass, _login(), _api())
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ACCOUNT_ID] == ACCOUNT
+
+
+async def test_several_properties_are_offered(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """The portal lists them, so setup should not ask for a number."""
+    result = await _run(hass, _login(), _api(accounts=[OTHER, SUMMARY]))
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_ACCOUNT_ID] == ACCOUNT
+
+
+def test_a_closed_account_is_labelled_as_such() -> None:
+    """Choosing a closed property would collect nothing, so say which is which."""
+    assert SUMMARY.active is True
+    assert SUMMARY.label == f"{SITE.address} ({ACCOUNT})"
+    assert OTHER.active is False
+    assert "inactive" in OTHER.label

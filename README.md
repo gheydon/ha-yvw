@@ -41,11 +41,12 @@ Or: **Settings → Devices & services → Add integration → Yarra Valley Water
 1. Enter your MyAccount email and password.
 2. Enter the verification code Yarra Valley Water texts you. Each code works
    once, so use the newest message.
-3. Choose the property to follow, or enter your account number if asked.
+3. Choose the property to follow, if your login covers more than one.
 
-The portal only names your account once its own web app has run and cached it,
-which a background client never does, so setup may ask for the number. It is the
-10-digit number on your bill, shown on the portal beside your address.
+Properties are read from the portal, the same way its own account switcher does,
+so there is nothing to look up. Closed accounts are listed too and labelled as
+such, since they no longer have a meter reporting. If the list comes back empty,
+setup asks for the account number instead — the 10-digit number on your bill.
 
 ## What is stored
 
@@ -72,12 +73,6 @@ account_id     your water account number
 meter_serial   your meter's serial number
 address        the property address, used to name the device
 ```
-
-> **One exception, temporary and deliberate:** this release includes the session
-> cookie in the **Download diagnostics** file in the clear, so that a login
-> covering several properties can be investigated. See
-> [If your login covers several properties](#if-your-login-covers-several-properties).
-> Your password is still never written anywhere.
 
 The CSRF token the portal also requires is not stored at all. It is read from
 the portal on each page load, so it is always current.
@@ -221,27 +216,12 @@ somebody keen on checking their water use rather than a script.
 
 ## If your login covers several properties
 
-Setup asks for an account number because the portal will not name it to anything
-but its own web app. Making it offer a list instead needs a login that actually
-covers several properties, which nobody working on this has.
+Setup lists them and asks which to follow. Only one property can be followed per
+config entry; add the integration again to follow another.
 
-If yours does, set it up and then open the three-dot menu on the device and
-choose **Download diagnostics**. The file describes the shape of the portal's
-response — how many properties were found and where they sit in the payload —
-with account numbers, addresses and meter serials redacted.
-
-> **Read this before sharing a diagnostics file.**
->
-> This release deliberately includes the **live session cookie, in the clear**,
-> so the multi-property case can be reproduced against a real account. Anyone
-> who reads the file can use that account until the session lapses.
->
-> Do not attach it to a public issue. Send it privately, and sign out of
-> MyAccount afterwards to invalidate the session.
->
-> This is temporary. Set `INCLUDE_SESSION_IN_DIAGNOSTICS = False` in
-> `custom_components/yvw/const.py` to turn it off, and it will be removed once
-> multi-property logins are understood.
+Very large numbers of properties are the one untested case: the portal pages its
+account list, and nothing seen so far has needed a second page. If yours does,
+the log says so and you can enter the account number by hand instead.
 
 ## Privacy
 
