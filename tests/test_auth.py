@@ -91,8 +91,15 @@ def test_an_opaque_payload_yields_nothing() -> None:
 class FakeResponse:
     """Minimal stand-in for an aiohttp response."""
 
-    def __init__(self, text: str) -> None:
+    def __init__(
+        self,
+        text: str,
+        url: str = "https://myaccount.yvw.com.au/x",
+        status: int = 200,
+    ) -> None:
         self._text = text
+        self.url = url
+        self.status = status
 
     async def __aenter__(self):
         return self
@@ -118,11 +125,15 @@ class FakeSession:
 
     def get(self, url, **kwargs):
         self.gets.append(url)
-        return FakeResponse(self._get_body)
+        return FakeResponse(self._get_body, url=url)
 
     def post(self, url, **kwargs):
         self.posts.append((url, kwargs.get("data") or {}))
-        return FakeResponse(self._post_body)
+        return FakeResponse(self._post_body, url=url)
+
+    @property
+    def cookie_jar(self):
+        return []
 
 
 DO_LOGIN_OK = {"mfaType": "SMS", "pageUrl": "/myaccount/apex/MALoginFlowVFPage?retURL=%2F"}

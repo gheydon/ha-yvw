@@ -173,6 +173,13 @@ class YvwLogin:
         if not isinstance(result, dict):
             raise YvwInvalidAuth("The portal rejected that email address or password")
 
+        _LOGGER.debug(
+            "doLogin returned keys=%s mfaType=%s cookies=%s",
+            sorted(result),
+            result.get("mfaType"),
+            sorted({cookie.key for cookie in self._session.cookie_jar}),
+        )
+
         page_url = result.get("pageUrl")
         if not page_url:
             # No verification step; the session cookie should already be set.
@@ -187,14 +194,14 @@ class YvwLogin:
         # that the eventual postback has to echo back, so the page is kept
         # rather than re-fetched, which would invalidate it and send a second
         # code.
-        self._code_page_html = await self._async_get(self._code_page_url)
+        await self._async_load_code_page()
         return result.get("mfaType")
 
     async def async_resend_code(self) -> None:
         """Ask the portal to send another verification code."""
         if self._code_page_url is None:
             raise YvwApiError("There is no verification step in progress")
-        self._code_page_html = await self._async_get(self._code_page_url)
+        await self._async_load_code_page()
 
     async def async_submit_code(self, code: str) -> str:
         """Post the verification code and return the session cookie."""
@@ -245,11 +252,38 @@ class YvwLogin:
             raise YvwApiError("Signed in but the portal did not issue a session cookie")
         return sid
 
-    async def _async_get(self, url: str) -> str:
+    async def _async_get(self, url: str) -> tuple[str, str, int]:
+        """Fetch a page, returning its body, the URL it ended on and the status."""
         try:
             async with self._session.get(
                 url, headers=page_headers(), timeout=_TIMEOUT, allow_redirects=True
             ) as response:
-                return await response.text()
+                return await response.text(), str(response.url), response.status
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+
+    async def _async_load_code_page(self) -> None:
+        """Fetch the verification page, which is what sends the code."""
+        assert self._code_page_url is not None
+        html, final_url, status = await self._async_get(self._code_page_url)
+
+        reached_the_flow = bool(_DIGIT_FIELD_RE.search(html))
+        _LOGGER.debug(
+            "Verification page: status=%s landed_on=%s bytes=%s has_code_fields=%s "
+            "cookies=%s",
+            status,
+            final_url,
+            len(html),
+            reached_the_flow,
+            sorted({cookie.key for cookie in self._session.cookie_jar}),
+        )
+
+        if not reached_the_flow:
+            # Without reaching the flow page the portal never sends anything, so
+            # say so rather than presenting a code box that can never be filled.
+            raise YvwApiError(
+                "The portal did not serve the verification page "
+                f"(ended on {final_url} with status {status}), so no code was sent"
+            )
+
+        self._code_page_html = html
