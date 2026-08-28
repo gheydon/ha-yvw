@@ -14,6 +14,8 @@ from typing import Any
 
 from .aura import YvwAuraClient
 from .const import (
+    APEX_BALANCE_CLASS,
+    APEX_BALANCE_METHOD,
     APEX_CACHE_CLASS,
     APEX_CACHE_KEY,
     APEX_CACHE_METHOD,
@@ -67,10 +69,45 @@ class YvwApi:
         session payload is the only place that lists them without making extra
         requests, and it holds either a bare account id or a JSON blob.
         """
-        value = await self._client.async_invoke_apex(
-            APEX_CACHE_CLASS, APEX_CACHE_METHOD, {"key": APEX_CACHE_KEY}
+        sources = (
+            ("cached session payload", APEX_CACHE_CLASS, APEX_CACHE_METHOD,
+             {"key": APEX_CACHE_KEY}),
+            ("account balance", APEX_BALANCE_CLASS, APEX_BALANCE_METHOD, {}),
         )
-        return account_ids_in(value)
+
+        for label, classname, method, params in sources:
+            try:
+                value = await self._client.async_invoke_apex(classname, method, params)
+            except YvwApiError as err:
+                _LOGGER.debug("Could not read the %s: %s", label, err)
+                continue
+
+            found = account_ids_in(value)
+            _LOGGER.debug(
+                "Looked for accounts in the %s: %s (%s)",
+                label,
+                f"found {len(found)}" if found else "found none",
+                _describe(value),
+            )
+            if found:
+                return found
+
+        # Last resort: the account search itself, with nothing to search on. The
+        # portal resolves the signed-in user's accounts server side, so this may
+        # answer even when the cache is opaque.
+        try:
+            value = await self._client.async_invoke(CONTROLLER_ACCOUNT, METHOD_GET_ACCOUNT, {})
+        except YvwApiError as err:
+            _LOGGER.debug("Could not read the account search: %s", err)
+            return []
+
+        found = account_ids_in(value)
+        _LOGGER.debug(
+            "Looked for accounts in the account search: %s (%s)",
+            f"found {len(found)}" if found else "found none",
+            _describe(value),
+        )
+        return found
 
     async def async_get_account(self, account_id: str) -> AccountInfo:
         """Return the account's address and meter details."""
@@ -262,3 +299,14 @@ def account_ids_in(value: object) -> list[str]:
 
 def _is_account_id(value: object) -> bool:
     return isinstance(value, str | int) and str(value).isdigit()
+
+
+def _describe(value: object) -> str:
+    """Describe a portal response for the log without spilling its contents."""
+    if isinstance(value, str):
+        return f"str of {len(value)} chars, digits only: {value.strip().isdigit()}"
+    if isinstance(value, dict):
+        return f"dict with keys {sorted(value)[:12]}"
+    if isinstance(value, list):
+        return f"list of {len(value)}"
+    return type(value).__name__

@@ -34,6 +34,11 @@ APEX_CACHE_CLASS = "MyAccountPlatformCacheController"
 APEX_CACHE_METHOD = "getCache"
 APEX_CACHE_KEY = "payload"
 
+# Called with no arguments: the portal works out which account is meant from the
+# session, so its answer names the account when the cache does not.
+APEX_BALANCE_CLASS = "MyAccountBalanceController"
+APEX_BALANCE_METHOD = "getAccountBalance"
+
 # Sign-in is a direct Apex call too, answering with the MFA type and the URL of
 # the verification-code page.
 APEX_AUTH_CLASS = "MyAccountCommunityAuthController"
