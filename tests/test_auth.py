@@ -349,12 +349,20 @@ async def test_a_refused_code_is_reported_as_such(monkeypatch) -> None:
     """
     session = HopSession([FRONTDOOR_BOUNCE, META_BOUNCE, CODE_PAGE], cookies=["sid"])
     login, _ = await _login_with(monkeypatch, session)
-
-    # The postback comes back showing the code form again.
     session._post_body = CODE_PAGE
+
+    # A refused code leaves the session parked on the login flow, so confirming
+    # it is what reveals the refusal.
+    async def finish_rejects():
+        raise YvwInvalidCode("The verification step was not completed")
+
+    login.async_finish = finish_rejects
 
     with pytest.raises(YvwInvalidCode):
         await login.async_submit_code("123456")
+
+    # The returned form is kept so a retry needs no new code.
+    assert login.code_page_html == CODE_PAGE
 
 
 def test_hidden_code_fields_are_preferred_over_visible_boxes() -> None:
@@ -396,3 +404,60 @@ def test_a_page_with_nothing_to_say_yields_nothing() -> None:
     from custom_components.yvw.auth import page_message
 
     assert page_message("<html><body><p>Enter your code</p></body></html>") is None
+
+
+A4J_ONCLICK = (
+    "return A4J.AJAX.Submit('mfapage:theForm',event,"
+    "{'similarityGroupingId':'mfapage:theForm:page:j_id73:j_id82','html5Validate':true,"
+    "'oncomplete':function(request,event,data){checkError()},"
+    "'parameters':{'mfapage:theForm:page:j_id73:j_id82':"
+    "'mfapage:theForm:page:j_id73:j_id82'} ,"
+    "'status':'mfapage:theForm:page:pageStatus'} );"
+)
+
+
+def test_an_ajax_submit_button_is_recognised() -> None:
+    """The button calls into AJAX4JSF rather than posting the form."""
+    from custom_components.yvw.auth import a4j_parameters
+
+    assert a4j_parameters(A4J_ONCLICK) == {
+        "AJAXREQUEST": "mfapage:theForm",
+        "mfapage:theForm:page:j_id73:j_id82": "mfapage:theForm:page:j_id73:j_id82",
+    }
+
+
+def test_a_plain_button_is_left_alone() -> None:
+    from custom_components.yvw.auth import a4j_parameters
+
+    assert a4j_parameters("doSomethingElse()") is None
+    assert a4j_parameters("") is None
+
+
+def test_the_ajax_parameters_are_posted_instead_of_the_button_label() -> None:
+    """Posting the label runs no action: the page just re-renders.
+
+    That is indistinguishable from a refused code, which is what made this hard
+    to spot.
+    """
+    page = (
+        '<form action="/myaccount/MALoginFlowVFPage">'
+        '<input type="hidden" name="com.salesforce.visualforce.ViewState" value="S" />'
+        + "".join(
+            f'<input type="hidden" name="mfapage:theForm:page:{ordinal}Hidden" value="" />'
+            for ordinal in
+            ("first", "second", "third", "fourth", "fifth", "sixth")
+        )
+        + f'<input type="submit" name="mfapage:theForm:page:j_id73:j_id82"'
+        f' value="Submit" onclick="{A4J_ONCLICK}" /></form>'
+    )
+
+    payload = build_code_form(page, "373054")
+
+    assert payload["AJAXREQUEST"] == "mfapage:theForm"
+    # The button echoes its own client id, not its label.
+    assert (
+        payload["mfapage:theForm:page:j_id73:j_id82"]
+        == "mfapage:theForm:page:j_id73:j_id82"
+    )
+    assert payload["mfapage:theForm:page:firstHidden"] == "3"
+    assert payload["mfapage:theForm:page:sixthHidden"] == "4"

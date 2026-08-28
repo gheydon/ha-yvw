@@ -60,10 +60,32 @@ _DIGIT_FIELD_RE = re.compile(
 )
 _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
+# The submit button does not post the form directly. It calls into AJAX4JSF,
+# which identifies the request by an AJAXREQUEST parameter naming the container
+# and echoes the pressed button's client id as its own value. A plain post is
+# accepted but simply re-renders the page without running the action behind the
+# button, which looks exactly like a silently refused code.
+_A4J_SUBMIT_RE = re.compile(r"A4J\.AJAX\.Submit\(\s*'([^']+)'")
+_A4J_PARAMS_RE = re.compile(r"'parameters'\s*:\s*\{([^}]*)\}")
+_A4J_PAIR_RE = re.compile(r"'([^']+)'\s*:\s*'([^']*)'")
+_A4J_REQUEST_FIELD = "AJAXREQUEST"
+
 CODE_LENGTH = len(_DIGIT_ORDER)
 
 # Salesforce serves a login flow from a Visualforce page under /apex/.
 _LOGIN_FLOW_RE = re.compile(r"/apex/\w*LoginFlow\w*", re.IGNORECASE)
+
+
+def a4j_parameters(onclick: str) -> dict[str, str] | None:
+    """Return the parameters an AJAX4JSF submit button would post, if it is one."""
+    container = _A4J_SUBMIT_RE.search(onclick)
+    if container is None:
+        return None
+    parameters = {_A4J_REQUEST_FIELD: container.group(1)}
+    params = _A4J_PARAMS_RE.search(onclick)
+    if params:
+        parameters.update(dict(_A4J_PAIR_RE.findall(params.group(1))))
+    return parameters
 
 
 def page_message(html: str) -> str | None:
@@ -154,10 +176,15 @@ def build_code_form(html: str, code: str) -> dict[str, str]:
         if name in digit_names:
             continue
         if attrs.get("type", "text").lower() == "submit":
-            # Visualforce identifies which button was pressed by its presence.
-            if submit_name is None:
-                submit_name = name
+            if submit_name is not None:
+                continue
+            submit_name = name
+            parameters = a4j_parameters(attrs.get("onclick", ""))
+            if parameters is None:
+                # A plain button identifies itself by being present at all.
                 payload[name] = attrs.get("value", "")
+            else:
+                payload.update(parameters)
             continue
         payload[name] = attrs.get("value", "")
 
@@ -337,11 +364,17 @@ class YvwLogin:
         except aiohttp.ClientError as err:
             raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
 
-        # A rejected code re-renders the code form. Keeping the response lets
-        # the user try again on a fresh view state without the portal having to
-        # text them another code.
-        if _DIGIT_FIELD_RE.search(returned):
-            self._code_page_html = returned
+        # An AJAX postback answers with a page fragment, which may still carry
+        # the code fields whether or not the code was taken. Whether the session
+        # actually works is the only reliable answer, so ask that instead of
+        # reading the response.
+        try:
+            return await self.async_finish()
+        except YvwInvalidCode:
+            # Keep the returned form: it carries a fresh view state, so another
+            # attempt does not need the portal to send a new code.
+            if _DIGIT_FIELD_RE.search(returned):
+                self._code_page_html = returned
             message = page_message(returned)
             _LOGGER.debug(
                 "The code was not accepted. portal_said=%r posted_to=%s %s",
@@ -351,14 +384,7 @@ class YvwLogin:
             )
             raise YvwInvalidCode(
                 message or "The portal did not accept that verification code"
-            )
-
-        _LOGGER.debug(
-            "Code accepted; portal responded with %s bytes, next=%s",
-            len(returned),
-            describe_url(find_client_redirect(returned)),
-        )
-        return await self.async_finish()
+            ) from None
 
     async def async_finish(self) -> str:
         """Confirm the session works and return its cookie."""
