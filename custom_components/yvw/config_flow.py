@@ -42,11 +42,13 @@ from .auth import CODE_LENGTH, YvwLogin
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_INCLUDE_SESSION,
     CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
     CONF_SID,
+    DEFAULT_INCLUDE_SESSION,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
@@ -364,6 +366,7 @@ class YvwOptionsFlow(OptionsFlow):
                     CONF_KEEPALIVE_MINUTES: int(user_input[CONF_KEEPALIVE_MINUTES]),
                     CONF_PROBE_ENABLED: user_input[CONF_PROBE_ENABLED],
                     CONF_PROBE_STEP_MINUTES: int(user_input[CONF_PROBE_STEP_MINUTES]),
+                    CONF_INCLUDE_SESSION: user_input[CONF_INCLUDE_SESSION],
                 }
             )
 
@@ -397,6 +400,10 @@ class YvwOptionsFlow(OptionsFlow):
                         unit_of_measurement="minutes",
                     )
                 ),
+                vol.Required(
+                    CONF_INCLUDE_SESSION,
+                    default=options.get(CONF_INCLUDE_SESSION, DEFAULT_INCLUDE_SESSION),
+                ): bool,
             }
         )
         return self.async_show_form(

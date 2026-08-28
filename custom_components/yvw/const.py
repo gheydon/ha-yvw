@@ -77,17 +77,12 @@ CONF_ACCOUNT_ID = "account_id"
 CONF_METER_SERIAL = "meter_serial"
 CONF_ADDRESS = "address"
 
-# TEMPORARY, for development only.
-#
-# When true, the diagnostics download carries the live session cookie in the
-# clear so a maintainer can reproduce a problem against a real account. It is
-# It was here to work out how the portal presents a login covering several
-# properties. That is now answered, so it is off; leave it off.
-#
-# Anyone holding that cookie has the account until the session lapses, and
-# diagnostics are routinely attached to public issues. Set this to False once
-# the multi-property case has been worked out.
-INCLUDE_SESSION_IN_DIAGNOSTICS = False
+# Diagnostics normally redact the session. Turning this on puts it in the file
+# in the clear, which is occasionally the only way to reproduce a problem
+# against a real account — and is why it defaults to off and is announced
+# loudly when it is not.
+CONF_INCLUDE_SESSION = "include_session_in_diagnostics"
+DEFAULT_INCLUDE_SESSION = False
 
 # --- Behaviour --------------------------------------------------------------
 

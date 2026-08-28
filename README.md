@@ -202,6 +202,23 @@ Requests are made with browser headers and at slightly irregular intervals, and
 the integration polls for readings only twice a day, so the traffic looks like
 somebody keen on checking their water use rather than a script.
 
+## Including the session in diagnostics
+
+**Configure → Include the session in diagnostics.** Off by default, and it
+should stay off unless someone is helping you debug.
+
+Turned on, the diagnostics download carries your **live sign-in session in the
+clear**, so that a problem can be reproduced against a real account. Anyone who
+reads that file can use your account until the session lapses — and diagnostics
+are the sort of thing people paste into public issues without thinking.
+
+When it is on, the file says so in a heading at the top, and Home Assistant logs
+a warning each time a download is taken. If you have shared one, sign out of
+MyAccount to invalidate the session.
+
+Everything else in the file — account number, address, meter serial — is
+redacted whether this is on or off.
+
 ## Limits worth knowing
 
 - **The portal only serves about 30 days of hourly history.** A first setup
@@ -240,9 +257,11 @@ This integration does not want to know anything about you.
 - **Nothing is collected from you by the author.** No usage counts, no install
   pings, no identifiers. If you open an issue, you choose what to put in it.
 
-The one thing to be careful with is the **diagnostics download**, which
-necessarily contains details of your account, and in this release the session
-itself. Read the warning at the top of that file before sharing it with anyone.
+The one thing to be careful with is the **diagnostics download**. It describes
+your account, with the account number, address, meter serial and session
+redacted, so it is safe to share as it comes. See
+[Including the session in diagnostics](#including-the-session-in-diagnostics)
+before changing that.
 
 Nothing here can be taken on trust, and it should not be: the source is short,
 and every outbound request is made in `aura.py` and `auth.py`. Reading them is
