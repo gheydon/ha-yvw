@@ -9,6 +9,7 @@ sign-in, so storing a password would buy nothing.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -154,6 +155,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                 # was wrong, stale or already used.
                 self._code_error = str(err)
                 errors["base"] = "invalid_code"
+                await self._async_dump_code_page()
             except YvwCannotConnect:
                 errors["base"] = "cannot_connect"
             except YvwError:
@@ -258,6 +260,34 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
 
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=site.address, data=data)
+
+    async def _async_dump_code_page(self) -> None:
+        """Save the verification page when a code is refused, under debug logging.
+
+        A refusal the portal declines to explain can only be understood from the
+        page itself: which fields its scripts fill, and how. Written locally and
+        only when debug logging is on, since it is a page from the user's own
+        account.
+        """
+        if not _LOGGER.isEnabledFor(logging.DEBUG) or self._login is None:
+            return
+        html = self._login.code_page_html
+        if not html:
+            return
+        path = self.hass.config.path(f"{DOMAIN}_verification_page.html")
+        try:
+            await self.hass.async_add_executor_job(
+                lambda: Path(path).write_text(html, encoding="utf-8")
+            )
+        except OSError as err:
+            _LOGGER.debug("Could not save the verification page: %s", err)
+        else:
+            _LOGGER.warning(
+                "Saved the verification page to %s (%s bytes) for diagnosis. "
+                "It is from your account, so review it before sharing",
+                path,
+                len(html),
+            )
 
     async def _async_discover(self, sid: str) -> dict[str, AccountInfo]:
         """Read every water account this login can see."""

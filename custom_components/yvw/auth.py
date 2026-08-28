@@ -227,6 +227,11 @@ class YvwLogin:
         """Return the verification page reached after the password step."""
         return self._code_page_url
 
+    @property
+    def code_page_html(self) -> str | None:
+        """Return the verification page as served, for diagnosing a refusal."""
+        return self._code_page_html
+
     async def async_submit_credentials(self, username: str, password: str) -> str | None:
         """Post the password and return the MFA type the portal chose.
 
