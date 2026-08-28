@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 512" width="1120" height="512">
+  <defs>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45B8EE"/>
+      <stop offset="0.5" stop-color="#1B7FCB"/>
+      <stop offset="1" stop-color="#0A4880"/>
+    </linearGradient>
+    <linearGradient id="river" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#DFF4FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <path id="dropShape" d="M256 60
+      C 256 60, 132 216, 132 312
+      C 132 388, 188 448, 256 448
+      C 324 448, 380 388, 380 312
+      C 380 216, 256 60, 256 60 Z"/>
+    <clipPath id="inside"><use href="#dropShape"/></clipPath>
+  </defs>
+
+  <use href="#dropShape" fill="url(#drop)"/>
+  <g clip-path="url(#inside)">
+    <path d="M 40 470 C 108 286, 196 258, 252 470 Z" fill="#062F55" opacity="0.42"/>
+    <path d="M 260 470 C 316 258, 404 286, 472 470 Z" fill="#03233F" opacity="0.52"/>
+    <path d="M 240 300
+      C 232 344, 268 358, 258 392
+      C 249 420, 220 436, 214 470
+      L 302 470
+      C 296 436, 284 420, 292 392
+      C 300 358, 272 344, 268 300 Z" fill="url(#river)"/>
+  </g>
+  <ellipse cx="205" cy="212" rx="20" ry="34" fill="#FFFFFF" opacity="0.28"
+           transform="rotate(-28 205 212)"/>
+
+  <text x="432" y="290" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="188" font-weight="700" letter-spacing="4" fill="#0A4880">YVW</text>
+  <text x="436" y="360" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="60" font-weight="400" letter-spacing="6" fill="#1B7FCB">WATER USE</text>
+</svg>

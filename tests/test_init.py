@@ -84,6 +84,11 @@ async def test_setup_creates_the_sensors(
     assert len(states) == 3
     assert states["sensor.1_example_st_suburb_vic_3000_latest_hourly_usage"] == "24.0"
     assert states["sensor.1_example_st_suburb_vic_3000_last_full_day_usage"] == "300.0"
+    # The last reading is stamped when the meter reported: the end of the hour.
+    assert (
+        states["sensor.1_example_st_suburb_vic_3000_last_reading"]
+        == "2026-08-20T14:00:00+00:00"
+    )
 
 
 async def test_setup_records_the_history(

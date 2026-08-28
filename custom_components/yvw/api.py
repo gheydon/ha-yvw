@@ -42,6 +42,15 @@ class UsageReading:
 
     litres: float
 
+    @property
+    def end(self) -> datetime:
+        """Return when the meter reported, which is the end of the hour.
+
+        Statistics are filed against the start of the interval, but a reading is
+        taken at the end of it: the 23:00 hour is reported at midnight.
+        """
+        return self.start + timedelta(hours=1)
+
 
 @dataclass(frozen=True, slots=True)
 class AccountInfo:

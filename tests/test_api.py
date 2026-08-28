@@ -176,3 +176,20 @@ async def test_account_details_are_read_from_the_meter_list(portal_tz) -> None:
     assert account.meter_serial == "YAW0000001"
     assert account.address == "1 Example St, Suburb, Vic, 3000"
     assert account.has_usage is True
+
+
+async def test_a_reading_reports_at_the_end_of_its_hour(portal_tz) -> None:
+    """The 23:00 hour is measured at midnight, which is when it was read.
+
+    Statistics are filed against the start of the interval, but "last reading"
+    means when the meter reported.
+    """
+    client = StubClient([response([usage("2026-08-28", "00:00", 3)])])
+    api = YvwApi(client, portal_tz)
+
+    readings = await api.async_get_hourly_usage(
+        "1234567890", "YAW0000001", date(2026, 8, 27), date(2026, 8, 28)
+    )
+
+    assert readings[0].start == datetime(2026, 8, 27, 23, 0, tzinfo=portal_tz)
+    assert readings[0].end == datetime(2026, 8, 28, 0, 0, tzinfo=portal_tz)

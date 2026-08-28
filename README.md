@@ -57,7 +57,7 @@ that dashboard — the portal's own billing figures are not used.
 | --- | --- |
 | Latest hourly usage | Litres in the most recent hour the meter reported |
 | Last full day usage | Litres across the most recent complete day |
-| Last reading | When the meter last reported |
+| Last reading | When the meter last reported, which is the end of the hour it covers |
 
 ## Reacting to new readings
 
@@ -163,6 +163,19 @@ response — how many properties were found and where they sit in the payload �
 with account numbers, addresses, meter serials and session credentials redacted.
 Attaching it to an issue is enough to get property selection working properly,
 and it does not expose your account.
+
+## Logo
+
+`brands/` holds the integration's mark: a droplet carrying a valley and a river,
+which is a nod to the name rather than anything belonging to Yarra Valley Water.
+It deliberately shares nothing with their logo — no leaf, none of their colours,
+and no imitation of their wordmark.
+
+Home Assistant serves integration logos from the
+[brands repository](https://github.com/home-assistant/brands), so the icon will
+only appear in the interface once `brands/icon.png` and `icon@2x.png` are
+submitted there under `custom_integrations/yvw/`. The files are sized and
+transparent, ready to go.
 
 ## Development
 

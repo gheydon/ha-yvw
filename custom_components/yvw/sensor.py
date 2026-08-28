@@ -61,7 +61,10 @@ class LatestHourlyUsageSensor(YvwEntity, SensorEntity):
         latest = self.coordinator.data.latest
         if latest is None:
             return None
-        return {"hour_starting": latest.start.isoformat()}
+        return {
+            "hour_starting": latest.start.isoformat(),
+            "hour_ending": latest.end.isoformat(),
+        }
 
 
 class LastFullDayUsageSensor(YvwEntity, SensorEntity):
@@ -101,8 +104,12 @@ class LastReadingSensor(YvwEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the end of the most recent reported hour."""
+        """Return when the meter last reported.
+
+        That is the end of the hour it covers, not the start: the reading for
+        the 23:00 hour is taken at midnight.
+        """
         latest = self.coordinator.data.latest
         if latest is None:
             return None
-        return latest.start
+        return latest.end
