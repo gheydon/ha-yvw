@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -11,6 +12,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 pytest_plugins = "pytest_homeassistant_custom_component"
+
+# The recorder logs every statement it runs, which drowns out the actual output.
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
 @pytest.fixture

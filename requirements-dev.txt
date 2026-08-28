@@ -1,5 +1,4 @@
-homeassistant==2025.12.4
-pytest
-pytest-asyncio
-pytest-homeassistant-custom-component
+# pytest-homeassistant-custom-component pins the Home Assistant version it
+# tests against, so it is the thing to bump; homeassistant follows from it.
+pytest-homeassistant-custom-component==0.13.316
 ruff
