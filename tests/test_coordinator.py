@@ -411,3 +411,49 @@ async def test_a_skipped_wakeup_reports_nothing(
     await hass.async_block_till_done()
 
     assert events == []
+
+
+async def test_a_successful_ping_updates_the_sensor(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The sensor reads the time from the coordinator, so it has to be told.
+
+    Without this it sits at unknown for the life of the entry, which is exactly
+    how a keep-alive that is working can look like one that never runs.
+    """
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=11)
+    updates: list[None] = []
+    coordinator.async_add_listener(lambda: updates.append(None))
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert coordinator.last_keepalive is not None
+    assert updates, "listeners were never told the ping happened"
+
+
+async def test_an_unexpected_error_still_arms_the_next_ping(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A loop that stops scheduling itself fails silently.
+
+    That is indistinguishable from a session the portal dropped, so anything
+    unforeseen must still leave the next ping armed.
+    """
+    api = StubApi()
+
+    async def explode(account_id: str) -> None:
+        raise RuntimeError("something unforeseen")
+
+    api.async_ping = explode
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=11)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert delays, "the loop stopped after an unexpected error"

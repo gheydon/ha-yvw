@@ -87,6 +87,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
         self._last_keepalive: datetime | None = None
+        self._session_dead = False
 
         @callback
         def _dummy_listener() -> None:
@@ -198,46 +199,56 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._cancel_keepalive = None
 
     async def _async_keepalive(self, _now: datetime) -> None:
+        """Touch the portal so the session does not go idle.
+
+        Whatever happens in here, the next ping is armed on the way out. A
+        keep-alive that stops scheduling itself fails silently and looks exactly
+        like a session the portal dropped, so the loop is kept alive even when
+        something inside it misbehaves.
+        """
         self._cancel_keepalive = None
-
-        # Any successful request resets the portal's idle clock, so a poll that
-        # just ran has already done this ping's job. Skipping keeps the request
-        # count to the minimum that holds the session open — but only the time
-        # still owed is waited out. Starting a fresh interval here would let the
-        # gap grow towards twice what was configured, which is the opposite of
-        # the safety margin the setting is meant to provide.
-        interval = self.keepalive_interval
-        idle = dt_util.utcnow() - (self._last_contact or dt_util.utcnow())
-        if self._last_contact is not None and idle < interval:
-            self._async_schedule_keepalive(interval - idle)
-            return
-
-        idle_minutes = round(idle.total_seconds() / 60)
+        reschedule: timedelta | None = None
 
         try:
-            await self.api.async_ping(self.account_id)
-            self._last_contact = self._last_keepalive = dt_util.utcnow()
-        except YvwAuthError:
-            # Nothing will revive the session without the user, so stop pinging
-            # a dead one and ask them to sign in again.
-            _LOGGER.warning(
-                "The Yarra Valley Water session expired after %s of keep-alive pings "
-                "every %s; re-authentication is needed",
-                self._session_age(),
-                self.keepalive_interval,
-            )
-            self.async_stop_keepalive()
-            if self.calibrating:
-                await self._async_conclude_calibration(idle_minutes)
-            self._async_fire_keepalive("expired", idle_minutes)
-            self._async_fire_auth_failed("keepalive")
-            self.config_entry.async_start_reauth(self.hass)
-            return
-        except YvwError as err:
-            # A transient failure is not worth escalating; the next ping retries.
-            _LOGGER.debug("Keep-alive ping failed: %s", err)
-            self._async_fire_keepalive("failed", idle_minutes, error=str(err))
-        else:
+            # Any successful request resets the portal's idle clock, so a poll
+            # that just ran has already done this ping's job. Skipping keeps the
+            # request count to the minimum that holds the session open — but
+            # only the time still owed is waited out. Starting a fresh interval
+            # here would let the gap grow towards twice what was configured,
+            # which is the opposite of the safety margin the setting provides.
+            interval = self.keepalive_interval
+            idle = dt_util.utcnow() - (self._last_contact or dt_util.utcnow())
+            if self._last_contact is not None and idle < interval:
+                reschedule = interval - idle
+                return
+
+            idle_minutes = round(idle.total_seconds() / 60)
+
+            try:
+                await self.api.async_ping(self.account_id)
+                self._last_contact = self._last_keepalive = dt_util.utcnow()
+            except YvwAuthError:
+                # Nothing will revive the session without the user, so stop
+                # pinging a dead one and ask them to sign in again.
+                _LOGGER.warning(
+                    "The Yarra Valley Water session expired after %s of keep-alive "
+                    "pings every %s; re-authentication is needed",
+                    self._session_age(),
+                    self.keepalive_interval,
+                )
+                if self.calibrating:
+                    await self._async_conclude_calibration(idle_minutes)
+                self._session_dead = True
+                self._async_fire_keepalive("expired", idle_minutes)
+                self._async_fire_auth_failed("keepalive")
+                self.config_entry.async_start_reauth(self.hass)
+                return
+            except YvwError as err:
+                # A transient failure is not worth escalating; the next retries.
+                _LOGGER.debug("Keep-alive ping failed: %s", err)
+                self._async_fire_keepalive("failed", idle_minutes, error=str(err))
+                return
+
             if self.calibrating:
                 await self._probe.async_record_survived(
                     self.config_entry.entry_id, idle_minutes
@@ -261,8 +272,18 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                     await self.api.async_probe_session_time(),
                 )
             self._async_fire_keepalive("ok", idle_minutes)
-
-        self._async_schedule_keepalive()
+            # The sensor reads this from the coordinator, so it has to be told.
+            self.async_update_listeners()
+        except Exception:
+            # Anything unforeseen would otherwise end the loop without a word.
+            _LOGGER.exception("Keep-alive failed unexpectedly; scheduling the next one")
+        finally:
+            # A dead session is the one case where stopping is correct: the
+            # reauth flow restarts this once the user has signed in.
+            if self._session_dead:
+                self._cancel_keepalive = None
+            else:
+                self._async_schedule_keepalive(reschedule)
 
     @callback
     def _async_log_activity(self, message: str) -> None:
@@ -319,6 +340,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 "The Yarra Valley Water session expired after %s; re-authentication is needed",
                 self._session_age(),
             )
+            self._session_dead = True
             self.async_stop_keepalive()
             self._async_fire_auth_failed("poll")
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -327,6 +349,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         # A successful poll proves the session is healthy again, and counts as
         # contact for the purposes of the idle clock.
+        self._session_dead = False
         self._last_contact = dt_util.utcnow()
         self.async_start_keepalive()
 
