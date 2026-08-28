@@ -49,6 +49,34 @@ that dashboard — the portal's own billing figures are not used.
 | Last full day usage | Litres across the most recent complete day |
 | Last reading | When the meter last reported |
 
+## Reacting to new readings
+
+Every poll that records new hours fires a `yvw_new_readings` event, so an
+automation can run when fresh consumption arrives rather than polling for it.
+Nothing fires when a poll finds no new hours, which is most of them.
+
+```yaml
+automation:
+  - alias: Warn about a heavy hour
+    triggers:
+      - trigger: event
+        event_type: yvw_new_readings
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.event.data.litres > 200 }}"
+    actions:
+      - action: notify.persistent_notification
+        data:
+          message: >
+            {{ trigger.event.data.count }} new hours recorded,
+            {{ trigger.event.data.litres }} L up to
+            {{ trigger.event.data.last_hour }}.
+```
+
+The event carries `count`, `litres`, `first_hour`, `last_hour`, `statistic_id`,
+`meter_serial`, `account_id`, `address` and `entry_id`. Hours are the start of
+the interval, in local time.
+
 ## Keeping the session alive
 
 The portal has no API keys and no OAuth, and it sends a verification code on

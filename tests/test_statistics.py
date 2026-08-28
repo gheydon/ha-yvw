@@ -60,7 +60,7 @@ async def test_first_import_starts_the_running_sum_at_zero(
 
     added = await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 20, 30]))
 
-    assert added == 3
+    assert len(added) == 3
     rows = await _stored(hass, statistic_id_for(METER))
     assert [row["state"] for row in rows] == [10, 20, 30]
     assert [row["sum"] for row in rows] == [10, 30, 60]
@@ -78,7 +78,7 @@ async def test_a_second_import_continues_the_running_sum(
         hass, METER, ADDRESS, readings(start + timedelta(hours=2), [5])
     )
 
-    assert added == 1
+    assert len(added) == 1
     rows = await _stored(hass, statistic_id_for(METER))
     assert [row["sum"] for row in rows] == [10, 30, 35]
 
@@ -93,7 +93,7 @@ async def test_replayed_hours_are_not_counted_twice(
 
     added = await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 20, 30]))
 
-    assert added == 1
+    assert len(added) == 1
     rows = await _stored(hass, statistic_id_for(METER))
     assert [row["sum"] for row in rows] == [10, 30, 60]
 
@@ -106,11 +106,11 @@ async def test_nothing_new_is_a_no_op(
     await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10]))
     await async_wait_recording_done(hass)
 
-    assert await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10])) == 0
+    assert await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10])) == []
 
 
 async def test_no_readings_writes_nothing(
     recorder_mock: Recorder, hass: HomeAssistant
 ) -> None:
     """A dead session or an empty window must not touch the statistics."""
-    assert await async_insert_statistics(hass, METER, ADDRESS, []) == 0
+    assert await async_insert_statistics(hass, METER, ADDRESS, []) == []

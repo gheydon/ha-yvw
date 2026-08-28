@@ -103,3 +103,7 @@ STATUS_ACTUAL = "ACTUAL"
 
 # dmUsageResponse.status when the requested window is outside the served range.
 STATUS_NOT_AVAILABLE = "Not available"
+
+# Fired once per poll that recorded new hours, so automations can react to
+# fresh consumption data rather than polling entities.
+EVENT_NEW_READINGS = f"{DOMAIN}_new_readings"

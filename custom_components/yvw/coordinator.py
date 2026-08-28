@@ -20,12 +20,13 @@ from .const import (
     CONF_KEEPALIVE_MINUTES,
     DEFAULT_KEEPALIVE_MINUTES,
     DOMAIN,
+    EVENT_NEW_READINGS,
     KEEPALIVE_JITTER,
     MAX_HISTORY_DAYS,
     UPDATE_INTERVAL,
 )
 from .exceptions import YvwAuthError, YvwError
-from .statistics import async_insert_statistics
+from .statistics import async_insert_statistics, statistic_id_for
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -219,9 +220,28 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self.hass, self.meter_serial, self.address, readings
         )
         if added:
-            _LOGGER.debug("Recorded %s new hourly readings for %s", added, self.meter_serial)
+            _LOGGER.debug("Recorded %s new hourly readings for %s", len(added), self.meter_serial)
+            self._async_fire_new_readings(added)
 
         return self._summarise(readings)
+
+    @callback
+    def _async_fire_new_readings(self, added: list[UsageReading]) -> None:
+        """Announce newly recorded hours so automations can act on them."""
+        self.hass.bus.async_fire(
+            EVENT_NEW_READINGS,
+            {
+                "entry_id": self.config_entry.entry_id,
+                "account_id": self.account_id,
+                "meter_serial": self.meter_serial,
+                "address": self.address,
+                "statistic_id": statistic_id_for(self.meter_serial),
+                "count": len(added),
+                "litres": round(sum(reading.litres for reading in added), 3),
+                "first_hour": added[0].start.isoformat(),
+                "last_hour": added[-1].start.isoformat(),
+            },
+        )
 
     def _summarise(self, readings: list[UsageReading]) -> YvwData:
         if not readings:

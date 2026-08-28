@@ -58,14 +58,14 @@ async def async_insert_statistics(
     meter_serial: str,
     address: str,
     readings: list[UsageReading],
-) -> int:
-    """Append readings to the meter's statistics, returning how many were added.
+) -> list[UsageReading]:
+    """Append readings to the meter's statistics and return the ones added.
 
     Readings at or before the newest stored hour are skipped, so a poll that
     overlaps what is already recorded is a no-op rather than a duplicate.
     """
     if not readings:
-        return 0
+        return []
 
     statistic_id = statistic_id_for(meter_serial)
 
@@ -83,16 +83,18 @@ async def async_insert_statistics(
         last_start = None
 
     statistics: list[StatisticData] = []
+    added: list[UsageReading] = []
     for reading in sorted(readings, key=lambda item: item.start):
         if last_start is not None and reading.start.timestamp() <= last_start:
             continue
         running_sum += reading.litres
+        added.append(reading)
         statistics.append(
             StatisticData(start=reading.start, state=reading.litres, sum=running_sum)
         )
 
     if not statistics:
-        return 0
+        return []
 
     _LOGGER.debug(
         "Adding %s hourly statistics to %s (through %s)",
@@ -101,4 +103,4 @@ async def async_insert_statistics(
         statistics[-1]["start"],
     )
     async_add_external_statistics(hass, _metadata(meter_serial, address), statistics)
-    return len(statistics)
+    return added
