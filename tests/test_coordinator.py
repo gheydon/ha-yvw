@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -292,3 +293,69 @@ async def test_concluding_settles_on_an_interval_inside_the_timeout(
     # Calibration switches itself off and keeps clear of the boundary.
     assert coordinator.config_entry.options[CONF_PROBE_ENABLED] is False
     assert coordinator.config_entry.options[CONF_KEEPALIVE_MINUTES] == 30
+
+
+# --- Keep-alive scheduling --------------------------------------------------
+
+
+async def test_an_early_wakeup_waits_only_the_time_still_owed(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A poll resets the portal's idle clock, so a ping due now can be skipped.
+
+    Starting a fresh interval when that happens lets the real gap grow towards
+    twice the configured one, which is how a session lapses despite a keep-alive
+    that looks correctly configured.
+    """
+    api = StubApi()
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=8)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert api.pings == 0
+    # Two minutes still owed, not another ten.
+    assert 100 <= delays[0] <= 130
+
+
+async def test_a_due_ping_is_sent_and_the_next_is_a_full_interval(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Once the interval really has elapsed, touch the portal."""
+    api = StubApi()
+    coordinator = build_coordinator(hass, api, {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=11)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert api.pings == 1
+    # A fresh interval, jittered no longer than the setting.
+    assert 8 * 60 <= delays[0] <= 10 * 60
+
+
+async def test_calibration_does_not_jitter_the_interval(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Shortening a measured gap would understate the timeout."""
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 20, CONF_PROBE_ENABLED: True}
+    )
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        coordinator._async_schedule_keepalive()
+
+    assert delays[0] == 20 * 60

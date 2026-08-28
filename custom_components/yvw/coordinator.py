@@ -170,19 +170,24 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._async_schedule_keepalive()
 
     @callback
-    def _async_schedule_keepalive(self) -> None:
-        """Arm the next ping, at a slightly irregular interval.
+    def _async_schedule_keepalive(self, delay: timedelta | None = None) -> None:
+        """Arm the next ping.
 
-        Exact clockwork is the one thing a person browsing their own usage
-        never produces, so the delay is jittered a little either side of the
-        configured interval.
+        Without a delay this is a fresh interval, jittered a little shorter:
+        exact clockwork is the one thing a person browsing their own usage never
+        produces. A given delay is used as it stands, which is how a wake-up
+        that turns out to be early asks for the remaining time rather than
+        starting the wait over.
         """
-        seconds = self.keepalive_interval.total_seconds()
-        # Jitter only shortens the gap, which would understate a measurement.
-        delay = seconds if self.calibrating else random.uniform(
-            seconds * (1 - KEEPALIVE_JITTER), seconds
-        )
-        self._cancel_keepalive = async_call_later(self.hass, delay, self._async_keepalive)
+        if delay is not None:
+            seconds = max(1.0, delay.total_seconds())
+        else:
+            seconds = self.keepalive_interval.total_seconds()
+            if not self.calibrating:
+                # Jitter only shortens the gap; lengthening one could outlast
+                # the timeout being measured.
+                seconds = random.uniform(seconds * (1 - KEEPALIVE_JITTER), seconds)
+        self._cancel_keepalive = async_call_later(self.hass, seconds, self._async_keepalive)
 
     @callback
     def async_stop_keepalive(self) -> None:
@@ -195,14 +200,17 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._cancel_keepalive = None
 
         # Any successful request resets the portal's idle clock, so a poll that
-        # just ran has already done this ping's job. Skipping here keeps the
-        # request count to the minimum that holds the session open.
+        # just ran has already done this ping's job. Skipping keeps the request
+        # count to the minimum that holds the session open — but only the time
+        # still owed is waited out. Starting a fresh interval here would let the
+        # gap grow towards twice what was configured, which is the opposite of
+        # the safety margin the setting is meant to provide.
         interval = self.keepalive_interval
-        if self._last_contact is not None and dt_util.utcnow() - self._last_contact < interval:
-            self._async_schedule_keepalive()
+        idle = dt_util.utcnow() - (self._last_contact or dt_util.utcnow())
+        if self._last_contact is not None and idle < interval:
+            self._async_schedule_keepalive(interval - idle)
             return
 
-        idle = dt_util.utcnow() - (self._last_contact or dt_util.utcnow())
         idle_minutes = round(idle.total_seconds() / 60)
 
         try:
