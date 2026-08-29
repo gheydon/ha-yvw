@@ -20,6 +20,14 @@ You sign in once with your MyAccount email, password and the code they text you.
 **Your password is never saved** — only the session that sign-in produces, which
 is what every later request uses. See [What is stored](#what-is-stored).
 
+> **This is an independent project.** It is not made by, associated with,
+> endorsed by, or supported by Yarra Valley Water. Please do not contact them
+> about it — their support staff did not write it and cannot help with it.
+> Anything to do with this integration belongs in
+> [issues on this repository](https://github.com/gheydon/ha-yvw/issues).
+> Contact Yarra Valley Water about your water, your bill or your meter, as you
+> normally would.
+
 ## Installing
 
 Click the button above, which opens this repository straight in HACS on your own
@@ -266,12 +274,16 @@ Very large numbers of properties are the one untested case: the portal pages its
 account list, and nothing seen so far has needed a second page. If yours does,
 the log says so and you can enter the account number by hand instead.
 
-## For Yarra Valley Water
+## Yarra Valley Water, could you help?
+
+If anyone from Yarra Valley Water reads this, here are four things that would
+help, in rough order of how much difference they would make.
 
 This integration exists because there is no supported way for a customer to get
 at their own meter readings. It works by replaying what the MyAccount website
-does, which is nobody's idea of a good arrangement — least of all ours. Three
-changes would make it unnecessary, and each is modest.
+does, which is nobody's idea of a good arrangement — least of all ours. None of
+what follows is a complaint about the portal, which does its job well. Each item
+would simply let us stop working around it.
 
 **Offer OAuth 2.0 as an authentication method.** Today the only way in is to
 post a password to the site's own sign-in and then complete an SMS verification
@@ -305,9 +317,22 @@ sharing nothing with your mark, because it is not ours to use. Adding
 own customers. It is a pull request with two images in it, and it should come
 from you rather than from us.
 
+**Tell us when the previous day's readings are published.** Readings arrive
+about a day late, but not at a time we can predict, so this integration polls
+blindly and re-reads a window of days each time to be sure it has not missed
+any. If you could say when a day's meter data is normally available — even
+roughly, "by 6am for the previous day" — every installation could poll once,
+shortly after, instead of guessing. That is fewer requests on your servers, not
+more, and it is the one item on this list that costs you nothing but a sentence
+of documentation.
+
 Happy to talk: open an issue on this repository, or get in touch with the
 maintainer. If any of this is already planned or possible today, we would rather
 delete the workarounds than keep them.
+
+To be clear about what this project is: it is written by a customer, for
+customers, and it is not affiliated with or endorsed by Yarra Valley Water. We
+are not asking you to support it — only to make it unnecessary.
 
 ## Privacy
 
