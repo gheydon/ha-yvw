@@ -33,6 +33,7 @@ from .const import (
     KEEPALIVE_RETRY,
     MAX_HISTORY_DAYS,
     MAX_KEEPALIVE_MINUTES,
+    MAX_PROBE_MINUTES,
     PROBE_SAFETY_MARGIN,
     UPDATE_INTERVAL,
     WATCHDOG_GRACE,
@@ -162,6 +163,9 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 CONF_PROBE_STEP_MINUTES, DEFAULT_PROBE_STEP_MINUTES
             )
             minutes = max(minutes, self.probe_state.survived_minutes + step)
+            # Measuring is allowed further than anyone should configure, or it
+            # would only ever report the configurable ceiling back.
+            return timedelta(minutes=min(minutes, MAX_PROBE_MINUTES))
         return timedelta(minutes=min(minutes, MAX_KEEPALIVE_MINUTES))
 
     @callback

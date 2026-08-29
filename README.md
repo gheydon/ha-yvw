@@ -194,9 +194,9 @@ the portal periodically to stop it going idle. If the session lapses anyway, a
 repair appears under **Settings → System → Repairs** asking you to sign in
 again; nothing is recorded as zero usage in the meantime.
 
-A session has been measured surviving a **70 minute** idle gap against the real
-portal, so the default is to touch it every 30 minutes: a wide margin, at a
-third of the requests the original guess made.
+A session has been measured surviving a **115 minute** idle gap against the real
+portal without complaint, so the default is to touch it every hour: comfortably
+inside what is proven, at a sixth of the requests the original guess made.
 
 Losing the session matters more than the request count, because getting it back
 needs a person and an SMS code. So the integration also watches that the

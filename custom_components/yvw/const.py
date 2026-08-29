@@ -103,13 +103,21 @@ DEFAULT_INCLUDE_SESSION = False
 UPDATE_INTERVAL = timedelta(hours=12)
 
 # The session expires server-side on idle, not in the browser. Measured against
-# the real portal, a session survived a 70 minute idle gap, so half an hour
-# leaves a wide margin while making a third of the requests the original ten
-# minute guess did. Losing a session costs the user an SMS code, so the margin
-# is deliberate; raise it with the option if you would rather be quieter still.
-DEFAULT_KEEPALIVE_MINUTES = 30
+# the real portal, a session survived a 115 minute idle gap without complaint,
+# so an hour is the default: comfortably inside what is proven, and a sixth of
+# the requests the original ten minute guess made. Losing a session costs the
+# user an SMS code, so the margin is deliberate.
+DEFAULT_KEEPALIVE_MINUTES = 60
 MIN_KEEPALIVE_MINUTES = 1
-MAX_KEEPALIVE_MINUTES = 120
+
+# The most a person may configure. Beyond what has been measured there is no
+# evidence to stand on, so the ceiling sits a little above it rather than far.
+MAX_KEEPALIVE_MINUTES = 240
+
+# Calibration may climb further than anyone should configure: the point of it is
+# to find where the limit actually is, and stopping at the configurable ceiling
+# would only ever report that ceiling back.
+MAX_PROBE_MINUTES = 480
 
 CONF_KEEPALIVE_MINUTES = "keepalive_minutes"
 

@@ -31,7 +31,7 @@ from custom_components.yvw.const import (
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     KEEPALIVE_RETRY,
-    MAX_KEEPALIVE_MINUTES,
+    MAX_PROBE_MINUTES,
 )
 from custom_components.yvw.coordinator import YvwCoordinator
 from custom_components.yvw.exceptions import YvwAuthError, YvwError
@@ -248,9 +248,9 @@ def test_calibration_never_exceeds_the_maximum(hass: HomeAssistant) -> None:
     coordinator = build_coordinator(
         hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10, CONF_PROBE_ENABLED: True}
     )
-    coordinator.probe_state.survived_minutes = MAX_KEEPALIVE_MINUTES + 100
+    coordinator.probe_state.survived_minutes = MAX_PROBE_MINUTES + 100
 
-    assert coordinator.keepalive_interval == timedelta(minutes=MAX_KEEPALIVE_MINUTES)
+    assert coordinator.keepalive_interval == timedelta(minutes=MAX_PROBE_MINUTES)
 
 
 def test_a_concluded_measurement_stops_calibrating(hass: HomeAssistant) -> None:
@@ -625,3 +625,31 @@ async def test_the_watchdog_leaves_a_dead_session_alone(
     await hass.async_block_till_done()
 
     assert events == []
+
+
+def test_calibration_may_climb_past_what_anyone_can_configure(
+    hass: HomeAssistant,
+) -> None:
+    """Stopping at the configurable ceiling would only report that ceiling.
+
+    The point of measuring is to find where the limit actually is, which means
+    testing gaps longer than anyone would sensibly run.
+    """
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 60, CONF_PROBE_ENABLED: True,
+                          CONF_PROBE_STEP_MINUTES: 15}
+    )
+    coordinator.probe_state.survived_minutes = MAX_KEEPALIVE_MINUTES
+
+    assert coordinator.keepalive_interval == timedelta(
+        minutes=MAX_KEEPALIVE_MINUTES + 15
+    )
+
+
+def test_a_configured_interval_is_still_capped(hass: HomeAssistant) -> None:
+    """Only measuring gets the longer leash."""
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: MAX_KEEPALIVE_MINUTES + 500}
+    )
+
+    assert coordinator.keepalive_interval == timedelta(minutes=MAX_KEEPALIVE_MINUTES)
