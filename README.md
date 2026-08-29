@@ -253,6 +253,21 @@ MyAccount to invalidate the session.
 Everything else in the file — account number, address, meter serial — is
 redacted whether this is on or off.
 
+## If the session lapses while you are away
+
+Nothing is lost, provided you sign in again within a month.
+
+Readings are fetched from a rolling 30 day window and written into statistics by
+the hour they belong to, so the next successful poll after signing back in fills
+in everything missed. A fortnight away costs one sign-in and nothing else: the
+gap is backfilled and the running total carries on from where it stopped.
+
+The limit is the portal's, not this integration's. It only serves the last 30
+days, so a gap longer than that loses the excess for good — there is nowhere to
+fetch it from. That is the reason the alerting matters more than the keep-alive:
+the keep-alive is a convenience that saves you sign-ins, while noticing promptly
+is what protects the data.
+
 ## Limits worth knowing
 
 - **The portal only serves about 30 days of hourly history.** A first setup
