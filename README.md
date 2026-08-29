@@ -326,13 +326,24 @@ shortly after, instead of guessing. That is fewer requests on your servers, not
 more, and it is the one item on this list that costs you nothing but a sentence
 of documentation.
 
-Happy to talk: open an issue on this repository, or get in touch with the
-maintainer. If any of this is already planned or possible today, we would rather
-delete the workarounds than keep them.
+**And an offer.** I would be glad to work with you on any of this. If there is
+an API in progress, I will happily build against it, test it against a real
+account and report back before it ships. If an OAuth flow needs a client
+registration, I will do the Home Assistant side of it. If you would rather this
+integration worked differently — a different name, different branding, a rate
+limit it should respect, endpoints it should leave alone — say so and it will.
+The aim is for Yarra Valley Water customers to have the best Home Assistant
+integration of any water utility, and that is much easier with you than around
+you.
+
+Open an issue on this repository, or get in touch with the maintainer. If any of
+this is already planned or possible today, we would rather delete the
+workarounds than keep them.
 
 To be clear about what this project is: it is written by a customer, for
 customers, and it is not affiliated with or endorsed by Yarra Valley Water. We
-are not asking you to support it — only to make it unnecessary.
+are not asking you to support it — only to make it unnecessary, or to make it
+better together.
 
 ## Privacy
 
