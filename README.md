@@ -266,6 +266,49 @@ Very large numbers of properties are the one untested case: the portal pages its
 account list, and nothing seen so far has needed a second page. If yours does,
 the log says so and you can enter the account number by hand instead.
 
+## For Yarra Valley Water
+
+This integration exists because there is no supported way for a customer to get
+at their own meter readings. It works by replaying what the MyAccount website
+does, which is nobody's idea of a good arrangement — least of all ours. Three
+changes would make it unnecessary, and each is modest.
+
+**Offer OAuth 2.0 as an authentication method.** Today the only way in is to
+post a password to the site's own sign-in and then complete an SMS verification
+step, because that is what the website does. That means a person has to be
+present for every sign-in, and it means software holding a session cookie that
+is indistinguishable from a browser's. An authorisation-code flow with a
+refresh token would let a customer grant read-only access to their own usage,
+review it, and revoke it — without any third-party software ever seeing a
+password or a verification code. It would be better for you than the present
+arrangement, in which the safest available option is still a password prompt.
+
+**Document two endpoints.** Only two are needed to do something useful:
+
+- *list the accounts a login covers* — account number, address, and whether it
+  is active
+- *fetch metered usage* — an account, a meter, a date range, an interval, and
+  readings back
+
+Both already exist behind the website. Publishing them, with a stable contract,
+would mean this integration stops depending on internal details that can change
+without notice — an undocumented dispatcher, Visualforce form fields, a CSRF
+token delivered in a cookie whose name is spelled backwards. When those change,
+customers' integrations break and the first you hear of it is a support call.
+
+**Submit your logo to the Home Assistant brands repository.** Home Assistant
+shows an integration's icon from
+[home-assistant/brands](https://github.com/home-assistant/brands). Yours is not
+there, so this integration ships a droplet of its own invention — deliberately
+sharing nothing with your mark, because it is not ours to use. Adding
+`custom_integrations/yvw/icon.png` would put your actual brand in front of your
+own customers. It is a pull request with two images in it, and it should come
+from you rather than from us.
+
+Happy to talk: open an issue on this repository, or get in touch with the
+maintainer. If any of this is already planned or possible today, we would rather
+delete the workarounds than keep them.
+
 ## Privacy
 
 This integration does not want to know anything about you.
