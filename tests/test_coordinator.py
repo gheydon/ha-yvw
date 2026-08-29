@@ -31,6 +31,7 @@ from custom_components.yvw.const import (
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     KEEPALIVE_RETRY,
+    MAX_KEEPALIVE_MINUTES,
     MAX_PROBE_MINUTES,
 )
 from custom_components.yvw.coordinator import YvwCoordinator
