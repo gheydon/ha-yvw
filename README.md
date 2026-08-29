@@ -264,9 +264,41 @@ gap is backfilled and the running total carries on from where it stopped.
 
 The limit is the portal's, not this integration's. It only serves the last 30
 days, so a gap longer than that loses the excess for good — there is nowhere to
-fetch it from. That is the reason the alerting matters more than the keep-alive:
-the keep-alive is a convenience that saves you sign-ins, while noticing promptly
-is what protects the data.
+fetch it from.
+
+**So the rule is simple: sign in at least once every 30 days and your history
+stays complete.** Nothing else is required of you. Whether the session lasted an
+hour or a fortnight makes no difference to the data — only to how often you are
+asked for a code.
+
+That is worth being clear about, because it changes what the keep-alive is for.
+It is a convenience that saves you sign-ins. It is not what protects your
+readings; noticing promptly and signing back in is.
+
+### A limit we cannot rule out
+
+The portal may enforce a maximum session age regardless of activity — a
+session that expires, say, 24 hours after sign-in no matter how recently it was
+used. Nothing observed so far proves this either way: the longest session seen
+alive was four hours old, and every expiry so far has been explained by
+something else.
+
+If such a limit exists, **no keep-alive interval can prevent it**, and the
+honest consequence is that you would be asked for a code roughly once a day.
+Tedious, but it costs nothing in readings: each sign-in backfills whatever was
+missed while the session was gone.
+
+The integration is instrumented to tell the two apart when it next happens. Both
+the `yvw_auth_failed` event and the stored measurement record the session's
+**age** alongside the idle gap that killed it:
+
+- expiring at a consistent age regardless of idle time → a hard limit
+- expiring after a long idle gap at any age → an idle timeout
+
+If it does turn out to be a hard limit, chasing a longer keep-alive interval is
+pointless and the effort belongs in making re-authentication quick instead —
+which is the strongest argument yet for
+[an OAuth flow with a refresh token](#yarra-valley-water-could-you-help).
 
 ## Limits worth knowing
 
@@ -309,6 +341,15 @@ refresh token would let a customer grant read-only access to their own usage,
 review it, and revoke it — without any third-party software ever seeing a
 password or a verification code. It would be better for you than the present
 arrangement, in which the safest available option is still a password prompt.
+
+While on the subject: **could you tell us the session policy?** How long a
+session survives idle, and whether there is a maximum age regardless of
+activity. We currently hold sessions open by touching the portal periodically,
+having measured by experiment that one survives at least 70 minutes idle. If
+there is a maximum age as well, that approach is pointless past it and customers
+face a verification code roughly once a day — which is precisely the problem an
+OAuth refresh token solves. Either way, knowing the numbers would let this
+integration make far fewer requests than guessing does.
 
 **Document two endpoints.** Only two are needed to do something useful:
 
