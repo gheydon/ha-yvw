@@ -16,5 +16,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/gheydon/ha-yvw/issues",
   "requirements": [],
-  "version": "0.5.4"
+  "version": "0.6.0"
 }

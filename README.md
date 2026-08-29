@@ -164,7 +164,8 @@ and the same identifying fields. Home Assistant also raises its own repair and
 re-authentication prompt at the same moment.
 
 Every keep-alive attempt fires `yvw_keepalive` with its `outcome` — `ok`,
-`failed` for something transient, or `expired` — along with `idle_minutes`,
+`failed` for something transient, `expired`, or `stalled` when the keep-alive is
+found not to have run — along with `idle_minutes`,
 `next_minutes`, `session_age`, `calibrating` and `measurement`. That is enough
 to follow a timeout measurement from a notification rather than a log. A wake-up
 that is skipped because a poll has already touched the portal fires nothing:
@@ -177,6 +178,17 @@ every sign-in. So the integration holds onto the session it was given, touching
 the portal periodically to stop it going idle. If the session lapses anyway, a
 repair appears under **Settings → System → Repairs** asking you to sign in
 again; nothing is recorded as zero usage in the meantime.
+
+A session has been measured surviving a **70 minute** idle gap against the real
+portal, so the default is to touch it every 30 minutes: a wide margin, at a
+third of the requests the original guess made.
+
+Losing the session matters more than the request count, because getting it back
+needs a person and an SMS code. So the integration also watches that the
+keep-alive is *running*: a loop that has stopped looks exactly like a healthy one
+until the readings quietly stop, which is worth knowing about promptly. If the
+portal has not been touched in well over the interval, that is reported as a
+`stalled` outcome and the keep-alive is restarted.
 
 How long a session survives untouched is not published, so the integration can
 measure it. Turn on **Find the session timeout** under **Configure** and each

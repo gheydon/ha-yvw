@@ -13,7 +13,7 @@ from homeassistant.components.logbook import async_log_entry
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -35,6 +35,8 @@ from .const import (
     MAX_KEEPALIVE_MINUTES,
     PROBE_SAFETY_MARGIN,
     UPDATE_INTERVAL,
+    WATCHDOG_GRACE,
+    WATCHDOG_INTERVAL,
 )
 from .exceptions import YvwAuthError, YvwError
 from .probe import ProbeState, ProbeStore
@@ -91,6 +93,8 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._last_contact: datetime | None = None
         self._last_keepalive: datetime | None = None
         self._session_dead = False
+        self._cancel_watchdog: Callable[[], None] | None = None
+        self._stall_reported = False
 
         @callback
         def _dummy_listener() -> None:
@@ -201,6 +205,60 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._cancel_keepalive()
             self._cancel_keepalive = None
 
+    @callback
+    def async_start_watchdog(self) -> None:
+        """Watch that the keep-alive is actually still running.
+
+        Everything else here reports a session that has gone. Nothing reported a
+        keep-alive that had simply stopped, and a stopped loop looks exactly
+        like a healthy one until the readings quietly stop. This makes no
+        requests: it only compares the clock against when the portal was last
+        touched.
+        """
+        if self._cancel_watchdog is None:
+            self._cancel_watchdog = async_track_time_interval(
+                self.hass, self._async_watchdog, WATCHDOG_INTERVAL
+            )
+
+    @callback
+    def async_stop_watchdog(self) -> None:
+        """Stop watching."""
+        if self._cancel_watchdog is not None:
+            self._cancel_watchdog()
+            self._cancel_watchdog = None
+
+    async def _async_watchdog(self, _now: datetime) -> None:
+        """Notice a keep-alive that has stopped, say so, and restart it."""
+        if self._session_dead or self._last_contact is None:
+            # Nothing to guard: the user has been asked to sign in again.
+            return
+
+        overdue_after = self.keepalive_interval * WATCHDOG_GRACE
+        idle = dt_util.utcnow() - self._last_contact
+        if idle <= overdue_after:
+            self._stall_reported = False
+            return
+
+        if self._stall_reported:
+            return
+        self._stall_reported = True
+
+        idle_minutes = round(idle.total_seconds() / 60)
+        _LOGGER.error(
+            "The keep-alive has not run for %s minutes, well past its %s interval. "
+            "Restarting it; the session may already have lapsed",
+            idle_minutes,
+            self.keepalive_interval,
+        )
+        self._async_log_activity(
+            f"keep-alive had stopped for {idle_minutes} minutes; restarting it"
+        )
+        self._async_fire_keepalive("stalled", idle_minutes)
+
+        # Re-arm and try immediately: the session may still be saveable.
+        self.async_stop_keepalive()
+        self._async_schedule_keepalive(timedelta(seconds=1))
+
     async def _async_keepalive(self, _now: datetime) -> None:
         """Touch the portal so the session does not go idle.
 
@@ -230,6 +288,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             try:
                 await self.api.async_ping(self.account_id)
                 self._last_contact = self._last_keepalive = dt_util.utcnow()
+                self._stall_reported = False
             except YvwAuthError:
                 # Nothing will revive the session without the user, so stop
                 # pinging a dead one and ask them to sign in again.

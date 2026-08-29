@@ -538,3 +538,90 @@ async def test_an_expiry_found_during_startup_still_reaches_automations(
 
     assert len(events) == 1
     assert events[0].data["detected_by"] == "poll"
+
+
+# --- Watchdog ---------------------------------------------------------------
+
+
+async def test_the_watchdog_says_nothing_while_the_keepalive_is_running(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """It must be silent in the normal case or it is just noise."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 30})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=20)
+
+    await coordinator._async_watchdog(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert events == []
+
+
+async def test_the_watchdog_reports_a_keepalive_that_has_stopped(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A stopped loop looks exactly like a healthy one until readings stop.
+
+    This is what happened overnight: no pings for nearly seven hours, and
+    nothing said so.
+    """
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 30})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(hours=7)
+
+    await coordinator._async_watchdog(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert [e.data["outcome"] for e in events] == ["stalled"]
+    assert events[0].data["idle_minutes"] == 420
+
+
+async def test_the_watchdog_reports_a_stall_once_not_every_tick(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """It runs every few minutes; repeating itself would be noise."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 30})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(hours=7)
+
+    for _ in range(3):
+        await coordinator._async_watchdog(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+
+
+async def test_the_watchdog_restarts_the_keepalive(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Reporting a stall without fixing it leaves the session to lapse."""
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 30})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(hours=7)
+
+    delays: list[float] = []
+    with patch(
+        "custom_components.yvw.coordinator.async_call_later",
+        side_effect=lambda hass, delay, action: delays.append(delay),
+    ):
+        await coordinator._async_watchdog(datetime.now(MELBOURNE))
+
+    assert delays and delays[0] <= 1, "the keep-alive was not restarted"
+
+
+async def test_the_watchdog_leaves_a_dead_session_alone(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The user has already been asked to sign in; nagging adds nothing."""
+    events: list[Event] = []
+    hass.bus.async_listen(EVENT_KEEPALIVE, events.append)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 30})
+    coordinator._last_contact = dt_util.utcnow() - timedelta(hours=7)
+    coordinator._session_dead = True
+
+    await coordinator._async_watchdog(datetime.now(MELBOURNE))
+    await hass.async_block_till_done()
+
+    assert events == []

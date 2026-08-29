@@ -55,8 +55,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
 
     entry.runtime_data = coordinator
     entry.async_on_unload(coordinator.async_stop_keepalive)
+    entry.async_on_unload(coordinator.async_stop_watchdog)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     coordinator.async_start_keepalive()
+    coordinator.async_start_watchdog()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

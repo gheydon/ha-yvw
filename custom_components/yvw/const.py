@@ -91,14 +91,12 @@ DEFAULT_INCLUDE_SESSION = False
 # down: every poll is one page load plus one Apex call.
 UPDATE_INTERVAL = timedelta(hours=12)
 
-# The session expires server-side on idle, not in the browser: an untouched
-# session was observed being refused with ec=302 at the login page after roughly
-# half an hour, and the portal ships Salesforce's own session-timeout warning
-# component, which only exists because the server enforces the limit. Salesforce
-# allows a minimum idle timeout of 15 minutes, so ping inside that. The cost of
-# pinging too often is one small POST; the cost of pinging too rarely is making
-# the user request another SMS code.
-DEFAULT_KEEPALIVE_MINUTES = 10
+# The session expires server-side on idle, not in the browser. Measured against
+# the real portal, a session survived a 70 minute idle gap, so half an hour
+# leaves a wide margin while making a third of the requests the original ten
+# minute guess did. Losing a session costs the user an SMS code, so the margin
+# is deliberate; raise it with the option if you would rather be quieter still.
+DEFAULT_KEEPALIVE_MINUTES = 30
 MIN_KEEPALIVE_MINUTES = 1
 MAX_KEEPALIVE_MINUTES = 120
 
@@ -112,6 +110,15 @@ KEEPALIVE_JITTER = 0.2
 # before trying again doubles the idle gap: it risks losing a session that was
 # fine, and while measuring it reports a gap far longer than the one intended.
 KEEPALIVE_RETRY = timedelta(minutes=2)
+
+# A cheap local check that the keep-alive is still running. It makes no
+# requests: it only compares the clock against when the portal was last
+# touched, because a loop that has stopped is silent by definition and would
+# otherwise go unnoticed until the next poll, half a day later.
+WATCHDOG_INTERVAL = timedelta(minutes=5)
+
+# How far past due the keep-alive must be before the loop is presumed stopped.
+WATCHDOG_GRACE = 2.5
 
 # Calibration. The portal does not publish its idle timeout, so it can be found
 # by holding a session open at steadily longer intervals until one lapses. That
