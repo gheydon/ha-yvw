@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Notes are built from the log, so the whole history is needed.
+          fetch-depth: 0
       - name: Check manifest version matches tag
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -20,7 +23,9 @@ jobs:
             echo "Tag $tag does not match manifest version $manifest" >&2
             exit 1
           fi
+      - name: Compose release notes
+        run: ./scripts/release-notes.sh "$GITHUB_REF_NAME" > release-notes.md
       - name: Create release
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" --notes-file release-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
