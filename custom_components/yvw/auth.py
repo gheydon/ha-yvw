@@ -35,6 +35,7 @@ from .const import (
     AURA_ENDPOINT,
     BASE_URL,
     COMMUNITY_PATH,
+    IGNORED_COOKIE_PREFIXES,
     LOGIN_PAGE,
     USAGE_PAGE,
 )
@@ -405,6 +406,21 @@ class YvwLogin:
         if not sid:
             raise YvwApiError("Signed in but the portal did not issue a session cookie")
         return sid
+
+    @property
+    def session_cookies(self) -> dict[str, str]:
+        """Return the cookies signing in left behind.
+
+        The session id on its own is refused by the portal, so the rest of what
+        sign-in established has to be kept with it. Analytics cookies the pages
+        collect are left out; they identify the user to third parties and do
+        nothing for the session.
+        """
+        return {
+            cookie.key: cookie.value
+            for cookie in self._session.cookie_jar
+            if not cookie.key.startswith(IGNORED_COOKIE_PREFIXES)
+        }
 
     async def _async_get(self, url: str) -> tuple[str, str, int]:
         """Fetch a page, returning its body, the URL it ended on and the status."""

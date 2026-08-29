@@ -73,6 +73,17 @@ BROWSER_HEADERS = {
 # config flow to sign in and are deliberately never written to the entry.
 
 CONF_SID = "sid"
+
+# Signing in leaves a set of cookies, not just a session id: Salesforce pairs
+# the session with sid_Client, clientSrc and others, and a client presenting the
+# id alone is refused — even through frontdoor.jsp. Home Assistant builds a new
+# cookie jar on every restart, so the whole set is kept and restored, otherwise
+# the session works only until something forces a fresh page load.
+CONF_COOKIES = "cookies"
+
+# Analytics cookies the portal's pages collect. Storing them would be keeping
+# tracking identifiers for no reason.
+IGNORED_COOKIE_PREFIXES = ("_ga", "_gcl", "_fbp", "mp_", "fs_uid", "__Host-ERIC")
 CONF_ACCOUNT_ID = "account_id"
 CONF_METER_SERIAL = "meter_serial"
 CONF_ADDRESS = "address"

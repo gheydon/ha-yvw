@@ -341,10 +341,21 @@ async def async_load_page_context(
 class YvwAuraClient:
     """Issue Apex calls against the MyAccount Aura endpoint."""
 
-    def __init__(self, session: aiohttp.ClientSession, sid: str) -> None:
-        """Store the session and seed the jar with the portal session cookie."""
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        sid: str,
+        cookies: dict[str, str] | None = None,
+    ) -> None:
+        """Store the session and seed the jar with the portal's cookies.
+
+        The session id alone is not enough. Salesforce pairs it with others set
+        during sign-in, and a client offering only the id is bounced to the
+        login page — so the whole set is restored when one was kept.
+        """
         self._session = session
-        self._session.cookie_jar.update_cookies({"sid": sid}, response_url=URL(BASE_URL))
+        restored = {**(cookies or {}), "sid": sid}
+        self._session.cookie_jar.update_cookies(restored, response_url=URL(BASE_URL))
         self._aura: AuraContext | None = None
 
     @property

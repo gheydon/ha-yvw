@@ -26,6 +26,7 @@ from .api import account_ids_in
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_COOKIES,
     CONF_INCLUDE_SESSION,
     CONF_METER_SERIAL,
     CONF_SID,
@@ -37,6 +38,7 @@ from .exceptions import YvwError
 _LOGGER = logging.getLogger(__name__)
 
 TO_REDACT = {
+    CONF_COOKIES,
     CONF_SID,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,

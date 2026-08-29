@@ -69,10 +69,17 @@ The config entry holds exactly this:
 
 ```
 sid            the session cookie
+cookies        the rest of the cookies signing in established
 account_id     your water account number
 meter_serial   your meter's serial number
 address        the property address, used to name the device
 ```
+
+The session id alone is not enough: Salesforce pairs it with others set during
+sign-in, and a client offering only the id is bounced to the login page — even
+through `frontdoor.jsp`. Home Assistant builds a new cookie jar on every
+restart, so the whole set is kept. Analytics cookies the portal's pages collect
+are deliberately left out.
 
 The CSRF token the portal also requires is not stored at all. It is read from
 the portal on each page load, so it is always current.

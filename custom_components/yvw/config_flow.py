@@ -42,6 +42,7 @@ from .auth import CODE_LENGTH, YvwLogin
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_COOKIES,
     CONF_INCLUDE_SESSION,
     CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
@@ -102,6 +103,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         """Set up flow state that spans the sign-in steps."""
         self._login: YvwLogin | None = None
         self._sid: str | None = None
+        self._cookies: dict[str, str] = {}
         self._summaries: list[AccountSummary] = []
         self._site: AccountInfo | None = None
         self._code_error: str | None = None
@@ -198,6 +200,9 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._login is not None
         try:
             self._sid = await self._login.async_finish()
+            # The id alone is refused on a fresh client, so keep the rest
+            # of what signing in established alongside it.
+            self._cookies = self._login.session_cookies
             self._summaries = await self._async_discover(self._sid)
         except YvwError as err:
             _LOGGER.error("Signed in but could not read the account: %s", err)
@@ -283,6 +288,9 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
 
         data = {
             CONF_SID: self._sid,
+            # The id alone is refused by the portal on a fresh client, so what
+            # else sign-in established is kept with it.
+            CONF_COOKIES: self._cookies,
             CONF_ACCOUNT_ID: site.account_id,
             CONF_METER_SERIAL: site.meter_serial,
             CONF_ADDRESS: site.address,

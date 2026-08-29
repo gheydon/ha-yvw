@@ -14,6 +14,7 @@ from .aura import YvwAuraClient
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_COOKIES,
     CONF_METER_SERIAL,
     CONF_SID,
     PORTAL_TIMEZONE,
@@ -30,7 +31,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     """Set up Yarra Valley Water from a config entry."""
     # A dedicated session keeps the portal's cookies out of the shared jar.
     session = async_create_clientsession(hass)
-    client = YvwAuraClient(session, entry.data[CONF_SID])
+    client = YvwAuraClient(
+        session, entry.data[CONF_SID], entry.data.get(CONF_COOKIES)
+    )
 
     # Readings are timestamped in the portal's local time, not UTC.
     portal_tz = await dt_util.async_get_time_zone(PORTAL_TIMEZONE)

@@ -19,6 +19,7 @@ from custom_components.yvw.api import AccountInfo, AccountSummary
 from custom_components.yvw.const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_COOKIES,
     CONF_METER_SERIAL,
     CONF_SID,
     DOMAIN,
@@ -42,6 +43,7 @@ def _login(**kwargs) -> AsyncMock:
     login.async_submit_credentials.return_value = "sms"
     login.async_submit_code.return_value = "session-value"
     login.async_finish.return_value = "session-value"
+    login.session_cookies = {"sid": "session-value", "sid_Client": "paired-value"}
     login.code_page_url = "https://myaccount.yvw.com.au/myaccount/apex/MALoginFlowVFPage"
     for key, value in kwargs.items():
         setattr(login, key, value)
@@ -97,6 +99,7 @@ async def test_signing_in_creates_the_entry(
     assert result["title"] == SITE.address
     assert result["data"] == {
         CONF_SID: "session-value",
+        CONF_COOKIES: {"sid": "session-value", "sid_Client": "paired-value"},
         CONF_ACCOUNT_ID: ACCOUNT,
         CONF_METER_SERIAL: "YAW0000001",
         CONF_ADDRESS: SITE.address,
@@ -216,3 +219,17 @@ def test_a_closed_account_is_labelled_as_such() -> None:
     assert SUMMARY.label == f"{SITE.address} ({ACCOUNT})"
     assert OTHER.active is False
     assert "inactive" in OTHER.label
+
+
+async def test_the_whole_cookie_set_is_kept_not_just_the_session_id(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """A client offering only the session id is refused by the portal.
+
+    Home Assistant builds a new cookie jar on every restart, so what sign-in
+    established has to be restored with it or the session works only until
+    something forces a fresh page load.
+    """
+    result = await _run(hass, _login(), _api())
+
+    assert result["data"][CONF_COOKIES]["sid_Client"] == "paired-value"
