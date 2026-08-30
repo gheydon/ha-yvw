@@ -20,8 +20,10 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 from custom_components.yvw.api import UsageReading
 from custom_components.yvw.const import (
     CATCHUP_RETRY,
+    CATCHUP_UNTIL_HOUR,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_CATCHUP_FROM_HOUR,
     CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
     CONF_PROBE_ENABLED,
@@ -661,9 +663,11 @@ def test_a_configured_interval_is_still_capped(hass: HomeAssistant) -> None:
 # --- Aiming the poll at when readings appear --------------------------------
 
 
-def _at(hass: HomeAssistant, hour: int, complete: bool) -> timedelta:
+def _at(
+    hass: HomeAssistant, hour: int, complete: bool, options: dict | None = None
+) -> timedelta:
     """Return the wait chosen at a given hour, for a given state of yesterday."""
-    coordinator = build_coordinator(hass, StubApi())
+    coordinator = build_coordinator(hass, StubApi(), options)
     moment = datetime(2026, 8, 30, hour, 0, tzinfo=MELBOURNE)
     with patch("custom_components.yvw.coordinator.datetime") as clock:
         clock.now.return_value = moment
@@ -672,7 +676,7 @@ def _at(hass: HomeAssistant, hour: int, complete: bool) -> timedelta:
 
 def test_before_the_morning_window_it_waits_for_it(hass: HomeAssistant) -> None:
     """Readings for a day are not there at three in the morning."""
-    assert _at(hass, 3, complete=False) == timedelta(hours=3)
+    assert _at(hass, 3, complete=False) == timedelta(hours=1)
 
 
 def test_during_the_window_it_tries_every_ten_minutes(hass: HomeAssistant) -> None:
@@ -684,7 +688,7 @@ def test_once_yesterday_is_complete_it_stops_until_tomorrow(
     hass: HomeAssistant,
 ) -> None:
     """Having got what it came for, asking again is wasted traffic."""
-    assert _at(hass, 7, complete=True) == timedelta(hours=23)
+    assert _at(hass, 7, complete=True) == timedelta(hours=21)
 
 
 def test_a_day_that_never_completes_is_given_up_on(hass: HomeAssistant) -> None:
@@ -693,7 +697,7 @@ def test_a_day_that_never_completes_is_given_up_on(hass: HomeAssistant) -> None:
     Retrying every ten minutes until midnight would ask over eighty times for
     readings that are never coming.
     """
-    assert _at(hass, 12, complete=False) == timedelta(hours=18)
+    assert _at(hass, 12, complete=False) == timedelta(hours=16)
 
 
 async def test_a_poll_sets_the_next_one_from_what_it_found(
@@ -745,3 +749,24 @@ async def test_the_time_in_state_restarts_when_the_session_does(
     # that the clock was restarted at all, not that time passed.
     assert coordinator.status_since >= went_down
     assert coordinator.expired_at is None
+
+
+def test_the_hour_it_starts_looking_can_be_moved(hass: HomeAssistant) -> None:
+    """Some meters publish earlier than others, and waiting gains nothing."""
+    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 2}) == (
+        CATCHUP_RETRY
+    )
+    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 6}) == (
+        timedelta(hours=3)
+    )
+
+
+def test_a_start_hour_past_the_give_up_hour_is_pulled_back(
+    hass: HomeAssistant,
+) -> None:
+    """Starting at or after the give-up hour would mean never looking at all."""
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: CATCHUP_UNTIL_HOUR + 3}
+    )
+
+    assert coordinator.catchup_from_hour == CATCHUP_UNTIL_HOUR - 1

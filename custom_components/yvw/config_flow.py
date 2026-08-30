@@ -40,8 +40,10 @@ from .api import AccountInfo, AccountSummary, YvwApi
 from .aura import YvwAuraClient
 from .auth import CODE_LENGTH, YvwLogin
 from .const import (
+    CATCHUP_UNTIL_HOUR,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
+    CONF_CATCHUP_FROM_HOUR,
     CONF_COOKIES,
     CONF_INCLUDE_SESSION,
     CONF_KEEPALIVE_MINUTES,
@@ -50,6 +52,7 @@ from .const import (
     CONF_PROBE_STEP_MINUTES,
     CONF_SID,
     CONF_SIGNED_IN_AT,
+    DEFAULT_CATCHUP_FROM_HOUR,
     DEFAULT_INCLUDE_SESSION,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
@@ -377,6 +380,7 @@ class YvwOptionsFlow(OptionsFlow):
                     CONF_PROBE_ENABLED: user_input[CONF_PROBE_ENABLED],
                     CONF_PROBE_STEP_MINUTES: int(user_input[CONF_PROBE_STEP_MINUTES]),
                     CONF_INCLUDE_SESSION: user_input[CONF_INCLUDE_SESSION],
+                    CONF_CATCHUP_FROM_HOUR: int(user_input[CONF_CATCHUP_FROM_HOUR]),
                 }
             )
 
@@ -408,6 +412,19 @@ class YvwOptionsFlow(OptionsFlow):
                         step=1,
                         mode=NumberSelectorMode.BOX,
                         unit_of_measurement="minutes",
+                    )
+                ),
+                vol.Required(
+                    CONF_CATCHUP_FROM_HOUR,
+                    default=options.get(
+                        CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0,
+                        max=CATCHUP_UNTIL_HOUR - 1,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
                     )
                 ),
                 vol.Required(

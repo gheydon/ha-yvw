@@ -104,8 +104,13 @@ DEFAULT_INCLUDE_SESSION = False
 # Readings for a day appear the following morning, but not at a time the portal
 # publishes, so polling is aimed rather than blind: from early morning, look
 # every ten minutes until yesterday is complete, then stop until tomorrow.
-CATCHUP_FROM_HOUR = 6
+CONF_CATCHUP_FROM_HOUR = "catchup_from_hour"
+DEFAULT_CATCHUP_FROM_HOUR = 4
 CATCHUP_RETRY = timedelta(minutes=10)
+
+# Nothing is gained by looking before the small hours, and the give-up hour has
+# to stay ahead of the start.
+MIN_CATCHUP_FROM_HOUR = 0
 
 # Give up for the day if yesterday has still not appeared by mid-morning. A
 # meter that reported only part of a day would otherwise be retried every ten

@@ -116,9 +116,14 @@ run from your Home Assistant config directory. It finds nothing.
 A day's readings appear the following morning, at no time the portal publishes.
 Rather than polling blindly around the clock, the integration aims at that:
 
-- from **6am** it looks every **ten minutes** for yesterday's readings
+- from **4am** it looks every **ten minutes** for yesterday's readings
 - as soon as yesterday is complete it stops, and waits until tomorrow morning
 - if yesterday has still not appeared by **11am** it gives up for the day
+
+The starting hour is under **Configure**, so it survives upgrades. Starting
+earlier finds the readings sooner at the cost of a few more attempts; starting
+later makes fewer requests and notices later. Observed on one meter, readings
+appeared shortly after 6am.
 
 That last rule matters. A meter that reported only part of a day is never going
 to finish it, and without a cut-off the integration would ask every ten minutes

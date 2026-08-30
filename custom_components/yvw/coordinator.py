@@ -20,12 +20,13 @@ from homeassistant.util import dt as dt_util
 
 from .api import UsageReading, YvwApi
 from .const import (
-    CATCHUP_FROM_HOUR,
     CATCHUP_RETRY,
     CATCHUP_UNTIL_HOUR,
+    CONF_CATCHUP_FROM_HOUR,
     CONF_KEEPALIVE_MINUTES,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
+    DEFAULT_CATCHUP_FROM_HOUR,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
@@ -187,6 +188,15 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         return bool(
             self.config_entry.options.get(CONF_PROBE_ENABLED)
         ) and not self.probe_state.concluded
+
+    @property
+    def catchup_from_hour(self) -> int:
+        """Return the hour the daily look for yesterday's readings begins."""
+        hour = self.config_entry.options.get(
+            CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
+        )
+        # A start at or past the give-up hour would mean never looking at all.
+        return min(int(hour), CATCHUP_UNTIL_HOUR - 1)
 
     @property
     def configured_interval_minutes(self) -> int:
@@ -506,7 +516,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         if data.yesterday_complete:
             return self._until_tomorrow_morning(now)
-        if now.hour < CATCHUP_FROM_HOUR:
+        if now.hour < self.catchup_from_hour:
             return self._morning(now) - now
         if now.hour >= CATCHUP_UNTIL_HOUR:
             return self._until_tomorrow_morning(now)
@@ -515,7 +525,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def _morning(self, now: datetime) -> datetime:
         """Return the start of today's catch-up window."""
         return now.replace(
-            hour=CATCHUP_FROM_HOUR, minute=0, second=0, microsecond=0
+            hour=self.catchup_from_hour, minute=0, second=0, microsecond=0
         )
 
     def _until_tomorrow_morning(self, now: datetime) -> timedelta:
