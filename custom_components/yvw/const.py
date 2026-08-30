@@ -168,6 +168,10 @@ PROBE_SAFETY_MARGIN = 0.75
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.probe"
 
+# The last Aura context that worked, so a restart need not load a page to
+# get one. Kept separately from the entry: it changes on every page load.
+CONTEXT_STORAGE_KEY = f"{DOMAIN}.context"
+
 # getDMUsage refuses any window starting more than 30 days before today.
 MAX_HISTORY_DAYS = 30
 

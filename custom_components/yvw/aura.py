@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from html import unescape
 from typing import Any
@@ -358,6 +359,8 @@ class YvwAuraClient:
         session: aiohttp.ClientSession,
         sid: str,
         cookies: dict[str, str] | None = None,
+        context: AuraContext | None = None,
+        on_context: Callable[[AuraContext], Awaitable[None]] | None = None,
     ) -> None:
         """Store the session and seed the jar with the portal's cookies.
 
@@ -368,7 +371,10 @@ class YvwAuraClient:
         self._session = session
         restored = {**(cookies or {}), "sid": sid}
         self._session.cookie_jar.update_cookies(restored, response_url=URL(BASE_URL))
-        self._aura: AuraContext | None = None
+        # A context kept from before means a restart need not load a page,
+        # which is the request most likely to be turned away.
+        self._aura: AuraContext | None = context
+        self._on_context = on_context
 
     @property
     def aura(self) -> AuraContext | None:
@@ -378,6 +384,8 @@ class YvwAuraClient:
     async def async_refresh(self) -> AuraContext:
         """Reload the usage page to pick up a fresh context and token."""
         self._aura = await async_load_page_context(self._session, USAGE_PAGE)
+        if self._on_context is not None:
+            await self._on_context(self._aura)
         return self._aura
 
     async def async_get_text(self, url: str) -> str | None:

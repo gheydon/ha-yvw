@@ -20,6 +20,7 @@ from .const import (
     CONF_SIGNED_IN_AT,
     PORTAL_TIMEZONE,
 )
+from .context_store import ContextStore
 from .coordinator import YvwConfigEntry, YvwCoordinator
 from .probe import ProbeStore
 
@@ -32,8 +33,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     """Set up Yarra Valley Water from a config entry."""
     # A dedicated session keeps the portal's cookies out of the shared jar.
     session = async_create_clientsession(hass)
+    contexts = ContextStore(hass)
+    await contexts.async_load()
+
+    async def _remember(aura) -> None:
+        await contexts.async_save(entry.entry_id, aura)
+
     client = YvwAuraClient(
-        session, entry.data[CONF_SID], entry.data.get(CONF_COOKIES)
+        session,
+        entry.data[CONF_SID],
+        entry.data.get(CONF_COOKIES),
+        context=contexts.get(entry.entry_id),
+        on_context=_remember,
     )
 
     # Readings are timestamped in the portal's local time, not UTC.
@@ -82,7 +93,11 @@ async def _async_reload_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> Non
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> None:
-    """Forget anything measured for an entry being removed."""
+    """Forget anything kept for an entry being removed."""
     probe = ProbeStore(hass)
     await probe.async_load()
     await probe.async_forget(entry.entry_id)
+
+    contexts = ContextStore(hass)
+    await contexts.async_load()
+    await contexts.async_forget(entry.entry_id)

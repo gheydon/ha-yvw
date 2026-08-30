@@ -89,6 +89,13 @@ through `frontdoor.jsp`. Home Assistant builds a new cookie jar on every
 restart, so the whole set is kept. Analytics cookies the portal's pages collect
 are deliberately left out.
 
+Separately from the entry, the integration also keeps the last working Aura
+context — the framework descriptor and CSRF token. Obtaining those fresh means
+loading a portal page, which is the request most likely to be turned away, so a
+restart that can reuse the previous one avoids the problem rather than needing
+to survive it. The token carries no expiry of its own and lives as long as the
+session behind it. Both are dropped when the integration is removed.
+
 The CSRF token the portal also requires is not stored at all. It is read from
 the portal on each page load, so it is always current.
 
