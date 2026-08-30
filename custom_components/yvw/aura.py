@@ -84,6 +84,18 @@ MAX_CLIENT_REDIRECTS = 6
 
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
+# Errors that mean the context is stale rather than the request being wrong: a
+# framework version that has moved on, or a token that is no longer accepted.
+# Only these are worth reloading the page for.
+_STALE_CONTEXT_HINTS = ("clientoutofsync", "refresh the page", "process your request")
+
+
+def _context_may_be_stale(err: Exception) -> bool:
+    """Return whether reloading the page might cure this error."""
+    if isinstance(err, YvwAuthError):
+        return True
+    return any(hint in str(err).casefold() for hint in _STALE_CONTEXT_HINTS)
+
 
 @dataclass(frozen=True, slots=True)
 class AuraContext:
@@ -402,13 +414,30 @@ class YvwAuraClient:
 
         try:
             return await self._async_invoke_once(classname, method, params)
-        except (YvwApiError, YvwAuthError):
-            # A rotated fwuid and a spent token both fail here and both are
-            # cured by reloading the page. If the session itself is gone the
-            # reload redirects to the login page and raises YvwAuthError, which
-            # is what the caller needs to hear.
+        except (YvwApiError, YvwAuthError) as err:
+            # Reloading the page cures a rotated fwuid or a spent token, and
+            # nothing else. Apex objecting to the request itself is not helped
+            # by it, and reloading anyway turns an ordinary error into an
+            # apparent loss of the session.
+            if not _context_may_be_stale(err):
+                raise
+
+            held = self._aura
             _LOGGER.debug("Retrying %s.%s after refreshing the Aura context", classname, method)
-            await self.async_refresh()
+            try:
+                await self.async_refresh()
+            except YvwAuthError:
+                # The page bounced to the login screen. That says this client
+                # cannot establish a *fresh* page session, which is not the same
+                # as the session being finished: the endpoint often still
+                # accepts the context already in hand. Try that before telling
+                # the user to sign in again.
+                if held is None:
+                    raise
+                _LOGGER.debug(
+                    "Could not reload the page; retrying with the context already held"
+                )
+                self._aura = held
             return await self._async_invoke_once(classname, method, params)
 
     async def _async_invoke_once(

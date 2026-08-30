@@ -222,3 +222,114 @@ async def test_an_unrelated_redirect_loop_is_still_a_connection_problem() -> Non
 
     with pytest.raises(YvwCannotConnect):
         await async_load_page_context(Bouncing(), "https://myaccount.yvw.com.au/myaccount/s/")
+
+
+class _Ctx:
+    """A context already in hand."""
+
+    context = {"fwuid": "FW1", "app": "siteforce:communityApp", "loaded": {}}
+    token = "a.b.c"
+
+
+def _client_with_context(responses: list):
+    """Build a client that already holds a context, with canned call results."""
+    from custom_components.yvw.aura import YvwAuraClient
+
+    class Session:
+        cookie_jar = _Jar()
+
+        def post(self, *args, **kwargs):
+            raise AssertionError("not used")
+
+        def get(self, *args, **kwargs):
+            raise AssertionError("not used")
+
+    client = YvwAuraClient.__new__(YvwAuraClient)
+    client._session = Session()
+    client._aura = _Ctx()
+    client._responses = list(responses)
+
+    async def invoke_once(classname, method, params):
+        result = client._responses.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    client._async_invoke_once = invoke_once
+    return client
+
+
+class _Jar:
+    def update_cookies(self, *args, **kwargs):
+        pass
+
+    def __iter__(self):
+        return iter(())
+
+
+async def test_an_ordinary_apex_error_does_not_reload_the_page() -> None:
+    """Reloading cures a stale context and nothing else.
+
+    Doing it for every error turns an Apex complaint about the request into an
+    apparent loss of the session, because the reload is what bounces.
+    """
+    client = _client_with_context(
+        [YvwApiError("The portal rejected the request: Script-thrown exception")]
+    )
+
+    async def refresh():
+        raise AssertionError("the page should not have been reloaded")
+
+    client.async_refresh = refresh
+
+    with pytest.raises(YvwApiError, match="Script-thrown"):
+        await client.async_invoke_apex("C", "m", {})
+
+
+async def test_a_stale_context_is_refreshed_and_retried() -> None:
+    """A framework version that has moved on is cured by reloading."""
+    client = _client_with_context(
+        [YvwApiError("clientOutOfSync: refresh the page"), {"ok": True}]
+    )
+    reloaded: list[bool] = []
+
+    async def refresh():
+        reloaded.append(True)
+
+    client.async_refresh = refresh
+
+    assert await client.async_invoke_apex("C", "m", {}) == {"ok": True}
+    assert reloaded == [True]
+
+
+async def test_a_bounced_reload_falls_back_to_the_context_in_hand() -> None:
+    """A page that bounces does not prove the session is finished.
+
+    The endpoint often still accepts the context already held, and reporting an
+    expiry here sends the user through an SMS code for nothing.
+    """
+    client = _client_with_context(
+        [YvwApiError("clientOutOfSync"), {"ok": True}]
+    )
+
+    async def refresh():
+        raise YvwAuthError("Session expired: the portal keeps redirecting")
+
+    client.async_refresh = refresh
+
+    assert await client.async_invoke_apex("C", "m", {}) == {"ok": True}
+
+
+async def test_a_session_the_endpoint_rejects_twice_is_reported() -> None:
+    """If the call fails again with the held context, it really has gone."""
+    client = _client_with_context(
+        [YvwAuthError("invalid session"), YvwAuthError("invalid session")]
+    )
+
+    async def refresh():
+        raise YvwAuthError("Session expired: the portal keeps redirecting")
+
+    client.async_refresh = refresh
+
+    with pytest.raises(YvwAuthError):
+        await client.async_invoke_apex("C", "m", {})
