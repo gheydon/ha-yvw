@@ -20,6 +20,9 @@ from homeassistant.util import dt as dt_util
 
 from .api import UsageReading, YvwApi
 from .const import (
+    CATCHUP_FROM_HOUR,
+    CATCHUP_RETRY,
+    CATCHUP_UNTIL_HOUR,
     CONF_KEEPALIVE_MINUTES,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
@@ -29,6 +32,7 @@ from .const import (
     EVENT_AUTH_FAILED,
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
+    HOURS_IN_A_DAY,
     KEEPALIVE_JITTER,
     KEEPALIVE_RETRY,
     MAX_HISTORY_DAYS,
@@ -55,6 +59,7 @@ class YvwData:
     """The most recent readings, for the sensor entities."""
 
     latest: UsageReading | None = None
+    yesterday_complete: bool = False
     last_full_day: date | None = None
     last_full_day_litres: float | None = None
 
@@ -74,6 +79,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         address: str,
         portal_tz: tzinfo,
         probe: ProbeStore,
+        signed_in_at: datetime | None = None,
     ) -> None:
         """Initialise the coordinator."""
         super().__init__(
@@ -89,11 +95,13 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self.address = address
         self._portal_tz = portal_tz
         self._probe = probe
+        self._signed_in_at = signed_in_at
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
         self._last_keepalive: datetime | None = None
         self._session_dead = False
+        self._expired_at: datetime | None = None
         self._cancel_watchdog: Callable[[], None] | None = None
         self._stall_reported = False
 
@@ -114,6 +122,21 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def session_age(self) -> timedelta | None:
         """Return how long the current session has been alive."""
         return self._session_age()
+
+    @property
+    def signed_in_at(self) -> datetime | None:
+        """Return when the user last signed in, if it was recorded."""
+        return self._signed_in_at
+
+    @property
+    def session_active(self) -> bool:
+        """Return whether the portal session is usable."""
+        return not self._session_dead
+
+    @property
+    def expired_at(self) -> datetime | None:
+        """Return when the session was found to have lapsed, if it has."""
+        return self._expired_at
 
     @property
     def last_keepalive(self) -> datetime | None:
@@ -305,6 +328,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 if self.calibrating:
                     await self._async_conclude_calibration(idle_minutes)
                 self._session_dead = True
+                self._expired_at = dt_util.utcnow()
                 self._async_fire_keepalive("expired", idle_minutes)
                 self._async_fire_auth_failed("keepalive")
                 self.config_entry.async_start_reauth(self.hass)
@@ -413,6 +437,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self._session_age(),
             )
             self._session_dead = True
+            self._expired_at = dt_util.utcnow()
             self.async_stop_keepalive()
             self._async_fire_auth_failed("poll")
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -432,7 +457,44 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             _LOGGER.debug("Recorded %s new hourly readings for %s", len(added), self.meter_serial)
             self._async_fire_new_readings(added)
 
-        return self._summarise(readings)
+        data = self._summarise(readings)
+        self.update_interval = self._next_poll(data)
+        _LOGGER.debug(
+            "Yesterday %s; next poll in %s",
+            "complete" if data.yesterday_complete else "still incomplete",
+            self.update_interval,
+        )
+        return data
+
+    def _next_poll(self, data: YvwData) -> timedelta:
+        """Return how long to wait before looking for readings again.
+
+        A day's readings appear the following morning, at no time the portal
+        publishes. So rather than polling blindly around the clock, this looks
+        from early morning every ten minutes until yesterday is complete, then
+        waits until tomorrow. A day that never completes is given up on by
+        mid-morning: retrying until midnight would only ask repeatedly for
+        readings that are not coming.
+        """
+        now = datetime.now(self._portal_tz)
+
+        if data.yesterday_complete:
+            return self._until_tomorrow_morning(now)
+        if now.hour < CATCHUP_FROM_HOUR:
+            return self._morning(now) - now
+        if now.hour >= CATCHUP_UNTIL_HOUR:
+            return self._until_tomorrow_morning(now)
+        return CATCHUP_RETRY
+
+    def _morning(self, now: datetime) -> datetime:
+        """Return the start of today's catch-up window."""
+        return now.replace(
+            hour=CATCHUP_FROM_HOUR, minute=0, second=0, microsecond=0
+        )
+
+    def _until_tomorrow_morning(self, now: datetime) -> timedelta:
+        """Return the wait until the next catch-up window opens."""
+        return self._morning(now + timedelta(days=1)) - now
 
     @callback
     def _async_fire(self, event_type: str, data: dict[str, Any]) -> None:
@@ -535,8 +597,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         ]
         last_full_day = max(complete_days) if complete_days else None
 
+        yesterday = (datetime.now(self._portal_tz) - timedelta(days=1)).date()
         return YvwData(
             latest=readings[-1],
+            yesterday_complete=len(by_day.get(yesterday, ())) >= HOURS_IN_A_DAY,
             last_full_day=last_full_day,
             last_full_day_litres=(
                 sum(hour.litres for hour in by_day[last_full_day])

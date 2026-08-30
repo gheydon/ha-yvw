@@ -12,6 +12,9 @@
       },
       "last_keepalive": {
         "default": "mdi:heart-pulse"
+      },
+      "session_status": {
+        "default": "mdi:key-chain-variant"
       }
     }
   }

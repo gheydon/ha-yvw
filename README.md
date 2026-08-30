@@ -104,6 +104,22 @@ python -c "import json;print(json.load(open('.storage/core.config_entries'))['da
 
 run from your Home Assistant config directory. It finds nothing.
 
+## When it looks for readings
+
+A day's readings appear the following morning, at no time the portal publishes.
+Rather than polling blindly around the clock, the integration aims at that:
+
+- from **6am** it looks every **ten minutes** for yesterday's readings
+- as soon as yesterday is complete it stops, and waits until tomorrow morning
+- if yesterday has still not appeared by **11am** it gives up for the day
+
+That last rule matters. A meter that reported only part of a day is never going
+to finish it, and without a cut-off the integration would ask every ten minutes
+until midnight for readings that are not coming.
+
+In the ordinary case that is one or two requests a day, replacing a blind poll
+every twelve hours that could sit half a day behind.
+
 ## Using it on the Water dashboard
 
 **Settings → Dashboards → Energy → Water → Add water source**, and pick
@@ -126,6 +142,7 @@ that dashboard — the portal's own billing figures are not used.
 | Latest hourly usage | Litres in the most recent hour the meter reported |
 | Last full day usage | Litres across the most recent complete day |
 | Last reading | When the meter last reported, which is the end of the hour it covers |
+| Session | Whether the sign-in still works, with when it was made, how old it is, and when it lapsed |
 
 ## Reacting to new readings
 

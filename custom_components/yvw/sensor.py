@@ -17,6 +17,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import EntityCategory, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .coordinator import YvwConfigEntry, YvwCoordinator
 from .entity import YvwEntity
@@ -35,6 +36,7 @@ async def async_setup_entry(
             LastFullDayUsageSensor(coordinator),
             LastReadingSensor(coordinator),
             LastKeepaliveSensor(coordinator),
+            SessionStatusSensor(coordinator),
         ]
     )
 
@@ -142,4 +144,53 @@ class LastKeepaliveSensor(YvwEntity, SensorEntity):
             "interval": str(self.coordinator.keepalive_interval),
             "calibrating": str(self.coordinator.calibrating),
             "measurement": self.coordinator.probe_state.summary,
+        }
+
+
+class SessionStatusSensor(YvwEntity, SensorEntity):
+    """Whether the portal session is usable, and the story around it.
+
+    The keep-alive sensor says when the portal was last touched. This says
+    whether the sign-in behind it still works — when it was established, how old
+    it is, and when it lapsed if it has. Losing a session needs a person and an
+    SMS code, so it is worth being able to see at a glance rather than inferring
+    from readings that stopped.
+    """
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["active", "expired"]
+
+    def __init__(self, coordinator: YvwCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "session_status")
+
+    @property
+    def native_value(self) -> str:
+        """Return whether the session still works."""
+        return "active" if self.coordinator.session_active else "expired"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        """Return when the session began, was last used, and lapsed."""
+        coordinator = self.coordinator
+        signed_in = coordinator.signed_in_at
+        age = dt_util.utcnow() - signed_in if signed_in else None
+        return {
+            "signed_in_at": signed_in.isoformat() if signed_in else None,
+            "session_age": str(age).split(".")[0] if age else None,
+            "expired_at": (
+                coordinator.expired_at.isoformat() if coordinator.expired_at else None
+            ),
+            "last_contact": (
+                coordinator.last_contact.isoformat()
+                if coordinator.last_contact
+                else None
+            ),
+            "last_keepalive": (
+                coordinator.last_keepalive.isoformat()
+                if coordinator.last_keepalive
+                else None
+            ),
+            "keepalive_interval": str(coordinator.keepalive_interval),
+            "next_poll": str(coordinator.update_interval),
         }

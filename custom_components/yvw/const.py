@@ -88,6 +88,10 @@ CONF_ACCOUNT_ID = "account_id"
 CONF_METER_SERIAL = "meter_serial"
 CONF_ADDRESS = "address"
 
+# When the user last signed in, so the session sensor can say how old the
+# session is rather than only when it was last touched.
+CONF_SIGNED_IN_AT = "signed_in_at"
+
 # Diagnostics normally redact the session. Turning this on puts it in the file
 # in the clear, which is occasionally the only way to reproduce a problem
 # against a real account — and is why it defaults to off and is announced
@@ -97,9 +101,21 @@ DEFAULT_INCLUDE_SESSION = False
 
 # --- Behaviour --------------------------------------------------------------
 
-# The portal publishes readings roughly a day late, so polling often gains
-# nothing. Twice a day is enough to stay current and keeps the request count
-# down: every poll is one page load plus one Apex call.
+# Readings for a day appear the following morning, but not at a time the portal
+# publishes, so polling is aimed rather than blind: from early morning, look
+# every ten minutes until yesterday is complete, then stop until tomorrow.
+CATCHUP_FROM_HOUR = 6
+CATCHUP_RETRY = timedelta(minutes=10)
+
+# Give up for the day if yesterday has still not appeared by mid-morning. A
+# meter that reported only part of a day would otherwise be retried every ten
+# minutes until midnight, for readings that are never going to arrive.
+CATCHUP_UNTIL_HOUR = 11
+
+# A full day of hourly readings.
+HOURS_IN_A_DAY = 24
+
+# Fallback when the schedule cannot be worked out.
 UPDATE_INTERVAL = timedelta(hours=12)
 
 # The session expires server-side on idle, not in the browser. Measured against

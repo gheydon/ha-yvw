@@ -14,6 +14,7 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.util import dt as dt_util
 
 from custom_components.yvw.api import AccountInfo, AccountSummary
 from custom_components.yvw.const import (
@@ -22,6 +23,7 @@ from custom_components.yvw.const import (
     CONF_COOKIES,
     CONF_METER_SERIAL,
     CONF_SID,
+    CONF_SIGNED_IN_AT,
     DOMAIN,
 )
 from custom_components.yvw.exceptions import YvwInvalidAuth, YvwInvalidCode
@@ -97,6 +99,10 @@ async def test_signing_in_creates_the_entry(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == SITE.address
+    # The sign-in time is recorded so the session sensor can report its age
+    # across restarts; its value is the moment of the test.
+    signed_in_at = result["data"].pop(CONF_SIGNED_IN_AT)
+    assert dt_util.parse_datetime(signed_in_at) is not None
     assert result["data"] == {
         CONF_SID: "session-value",
         CONF_COOKIES: {"sid": "session-value", "sid_Client": "paired-value"},

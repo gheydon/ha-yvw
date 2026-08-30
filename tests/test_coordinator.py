@@ -19,6 +19,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 
 from custom_components.yvw.api import UsageReading
 from custom_components.yvw.const import (
+    CATCHUP_RETRY,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
     CONF_KEEPALIVE_MINUTES,
@@ -33,8 +34,9 @@ from custom_components.yvw.const import (
     KEEPALIVE_RETRY,
     MAX_KEEPALIVE_MINUTES,
     MAX_PROBE_MINUTES,
+    UPDATE_INTERVAL,
 )
-from custom_components.yvw.coordinator import YvwCoordinator
+from custom_components.yvw.coordinator import YvwCoordinator, YvwData
 from custom_components.yvw.exceptions import YvwAuthError, YvwError
 from custom_components.yvw.probe import ProbeState, ProbeStore
 
@@ -654,3 +656,54 @@ def test_a_configured_interval_is_still_capped(hass: HomeAssistant) -> None:
     )
 
     assert coordinator.keepalive_interval == timedelta(minutes=MAX_KEEPALIVE_MINUTES)
+
+
+# --- Aiming the poll at when readings appear --------------------------------
+
+
+def _at(hass: HomeAssistant, hour: int, complete: bool) -> timedelta:
+    """Return the wait chosen at a given hour, for a given state of yesterday."""
+    coordinator = build_coordinator(hass, StubApi())
+    moment = datetime(2026, 8, 30, hour, 0, tzinfo=MELBOURNE)
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        return coordinator._next_poll(YvwData(yesterday_complete=complete))
+
+
+def test_before_the_morning_window_it_waits_for_it(hass: HomeAssistant) -> None:
+    """Readings for a day are not there at three in the morning."""
+    assert _at(hass, 3, complete=False) == timedelta(hours=3)
+
+
+def test_during_the_window_it_tries_every_ten_minutes(hass: HomeAssistant) -> None:
+    """The portal publishes at no time it announces, so keep looking."""
+    assert _at(hass, 7, complete=False) == CATCHUP_RETRY
+
+
+def test_once_yesterday_is_complete_it_stops_until_tomorrow(
+    hass: HomeAssistant,
+) -> None:
+    """Having got what it came for, asking again is wasted traffic."""
+    assert _at(hass, 7, complete=True) == timedelta(hours=23)
+
+
+def test_a_day_that_never_completes_is_given_up_on(hass: HomeAssistant) -> None:
+    """A meter that reported only part of a day is not going to finish it.
+
+    Retrying every ten minutes until midnight would ask over eighty times for
+    readings that are never coming.
+    """
+    assert _at(hass, 12, complete=False) == timedelta(hours=18)
+
+
+async def test_a_poll_sets_the_next_one_from_what_it_found(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The schedule follows the data rather than a fixed clock."""
+    coordinator = build_coordinator(hass, StubApi())
+
+    await coordinator._async_update_data()
+
+    # The stub returns a partial day, so it should be in catch-up or waiting,
+    # never the old blind twelve hours.
+    assert coordinator.update_interval != UPDATE_INTERVAL

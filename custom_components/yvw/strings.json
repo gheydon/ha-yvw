@@ -71,6 +71,13 @@
       },
       "last_keepalive": {
         "name": "Last keep-alive"
+      },
+      "session_status": {
+        "name": "Session",
+        "state": {
+          "active": "Active",
+          "expired": "Expired"
+        }
       }
     }
   },

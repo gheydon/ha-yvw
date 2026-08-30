@@ -49,6 +49,7 @@ from .const import (
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
     CONF_SID,
+    CONF_SIGNED_IN_AT,
     DEFAULT_INCLUDE_SESSION,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
@@ -294,6 +295,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_ACCOUNT_ID: site.account_id,
             CONF_METER_SERIAL: site.meter_serial,
             CONF_ADDRESS: site.address,
+            CONF_SIGNED_IN_AT: dt_util.utcnow().isoformat(),
         }
 
         await self.async_set_unique_id(site.account_id)
