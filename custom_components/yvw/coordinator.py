@@ -102,6 +102,9 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._last_keepalive: datetime | None = None
         self._session_dead = False
         self._expired_at: datetime | None = None
+        # When the session last changed between working and not, so the sensor
+        # can say how long it has been that way.
+        self._status_since: datetime = dt_util.utcnow()
         self._cancel_watchdog: Callable[[], None] | None = None
         self._stall_reported = False
 
@@ -132,6 +135,26 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def session_active(self) -> bool:
         """Return whether the portal session is usable."""
         return not self._session_dead
+
+    @property
+    def status_since(self) -> datetime:
+        """Return when the session last changed between working and not."""
+        return self._status_since
+
+    @callback
+    def _async_set_session_dead(self, dead: bool) -> None:
+        """Record a change in whether the session works, and say so.
+
+        The sensor reads this from the coordinator, so nothing updates unless
+        listeners are told — and a history of how long the session was up or
+        down is only as good as the moment it was written.
+        """
+        if dead == self._session_dead:
+            return
+        self._session_dead = dead
+        self._status_since = dt_util.utcnow()
+        self._expired_at = dt_util.utcnow() if dead else None
+        self.async_update_listeners()
 
     @property
     def expired_at(self) -> datetime | None:
@@ -255,7 +278,12 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._cancel_watchdog = None
 
     async def _async_watchdog(self, _now: datetime) -> None:
-        """Notice a keep-alive that has stopped, say so, and restart it."""
+        """Notice a keep-alive that has stopped, say so, and restart it.
+
+        Also nudges the entities, so how long the session has been up or down
+        keeps counting rather than freezing until the next poll.
+        """
+        self.async_update_listeners()
         if self._session_dead or self._last_contact is None:
             # Nothing to guard: the user has been asked to sign in again.
             return
@@ -327,8 +355,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 )
                 if self.calibrating:
                     await self._async_conclude_calibration(idle_minutes)
-                self._session_dead = True
-                self._expired_at = dt_util.utcnow()
+                self._async_set_session_dead(True)
                 self._async_fire_keepalive("expired", idle_minutes)
                 self._async_fire_auth_failed("keepalive")
                 self.config_entry.async_start_reauth(self.hass)
@@ -436,8 +463,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 "The Yarra Valley Water session expired after %s; re-authentication is needed",
                 self._session_age(),
             )
-            self._session_dead = True
-            self._expired_at = dt_util.utcnow()
+            self._async_set_session_dead(True)
             self.async_stop_keepalive()
             self._async_fire_auth_failed("poll")
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -446,7 +472,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         # A successful poll proves the session is healthy again, and counts as
         # contact for the purposes of the idle clock.
-        self._session_dead = False
+        self._async_set_session_dead(False)
         self._last_contact = dt_util.utcnow()
         self.async_start_keepalive()
 

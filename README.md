@@ -142,7 +142,26 @@ that dashboard — the portal's own billing figures are not used.
 | Latest hourly usage | Litres in the most recent hour the meter reported |
 | Last full day usage | Litres across the most recent complete day |
 | Last reading | When the meter last reported, which is the end of the hour it covers |
-| Session | Whether the sign-in still works, with when it was made, how old it is, and when it lapsed |
+| Session | Whether the sign-in still works: `active` or `expired` |
+
+### Seeing the session's history
+
+The session sensor reports `active` or `expired`, which means its **History**
+shows exactly how long the session was up, and how long it was down, as a
+timeline rather than a graph. Its attributes carry the detail:
+
+| attribute | |
+|---|---|
+| `since` | when it last changed between working and not |
+| `hours_in_state` | how long it has been that way |
+| `signed_in_at`, `session_age` | when the sign-in was made, and its age |
+| `expired_at` | when it lapsed, if it has |
+| `last_contact`, `last_keepalive` | when the portal was last touched |
+| `keepalive_interval`, `next_poll` | what it is doing next |
+
+`hours_in_state` counts in whole hours deliberately. Counting minutes would
+write a history entry every few minutes for a number nobody reads that
+precisely.
 
 ## Reacting to new readings
 

@@ -170,12 +170,18 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
         return "active" if self.coordinator.session_active else "expired"
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | None]:
-        """Return when the session began, was last used, and lapsed."""
+    def extra_state_attributes(self) -> dict[str, str | float | None]:
+        """Return how long it has been this way, and the story around it."""
         coordinator = self.coordinator
         signed_in = coordinator.signed_in_at
         age = dt_util.utcnow() - signed_in if signed_in else None
+        # Rounded to whole hours on purpose. Counting in minutes would write a
+        # new history row every time the entity is refreshed, for a number
+        # nobody reads that precisely.
+        in_state = dt_util.utcnow() - coordinator.status_since
         return {
+            "since": coordinator.status_since.isoformat(),
+            "hours_in_state": int(in_state.total_seconds() // 3600),
             "signed_in_at": signed_in.isoformat() if signed_in else None,
             "session_age": str(age).split(".")[0] if age else None,
             "expired_at": (

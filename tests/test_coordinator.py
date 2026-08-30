@@ -707,3 +707,41 @@ async def test_a_poll_sets_the_next_one_from_what_it_found(
     # The stub returns a partial day, so it should be in catch-up or waiting,
     # never the old blind twelve hours.
     assert coordinator.update_interval != UPDATE_INTERVAL
+
+
+async def test_losing_the_session_updates_the_entities(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """The sensor reads the state from here, so it has to be told it changed.
+
+    Without this the session sensor keeps saying active until the next poll,
+    and the history of when it went down is wrong by however long that was.
+    """
+    coordinator = build_coordinator(hass, StubApi(error=YvwAuthError("gone")))
+    updates: list[None] = []
+    coordinator.async_add_listener(lambda: updates.append(None))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.session_active is False
+    assert updates, "the entities were never told the session had gone"
+
+
+async def test_the_time_in_state_restarts_when_the_session_does(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """History should show how long it was down, then how long it has been up."""
+    coordinator = build_coordinator(hass, StubApi(error=YvwAuthError("gone")))
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+    went_down = coordinator.status_since
+
+    coordinator.api = StubApi()
+    await coordinator._async_update_data()
+
+    assert coordinator.session_active is True
+    # Both transitions land in the same microsecond under test, so the check is
+    # that the clock was restarted at all, not that time passed.
+    assert coordinator.status_since >= went_down
+    assert coordinator.expired_at is None
