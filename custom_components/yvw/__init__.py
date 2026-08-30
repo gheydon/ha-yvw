@@ -39,11 +39,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     async def _remember(aura) -> None:
         await contexts.async_save(entry.entry_id, aura)
 
+    kept = contexts.get(entry.entry_id)
+    # Which of these happens decides whether a restart needs the user, so it is
+    # worth saying plainly rather than leaving it to be inferred from silence.
+    _LOGGER.debug(
+        "Starting %s",
+        "from the context kept before the last shutdown"
+        if kept
+        else "with no kept context; a portal page will have to be loaded",
+    )
+
     client = YvwAuraClient(
         session,
         entry.data[CONF_SID],
         entry.data.get(CONF_COOKIES),
-        context=contexts.get(entry.entry_id),
+        context=kept,
         on_context=_remember,
     )
 

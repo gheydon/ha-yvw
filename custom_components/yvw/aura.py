@@ -382,7 +382,12 @@ class YvwAuraClient:
         return self._aura
 
     async def async_refresh(self) -> AuraContext:
-        """Reload the usage page to pick up a fresh context and token."""
+        """Reload the usage page to pick up a fresh context and token.
+
+        This is the request the portal is most likely to refuse, so it is worth
+        knowing when it happens rather than only when it fails.
+        """
+        _LOGGER.debug("Loading a portal page for a fresh Aura context")
         self._aura = await async_load_page_context(self._session, USAGE_PAGE)
         if self._on_context is not None:
             await self._on_context(self._aura)
