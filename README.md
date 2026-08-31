@@ -413,6 +413,21 @@ without notice — an undocumented dispatcher, Visualforce form fields, a CSRF
 token delivered in a cookie whose name is spelled backwards. When those change,
 customers' integrations break and the first you hear of it is a support call.
 
+**And if a mobile app is ever on the roadmap, this is work you will do anyway.**
+A native app cannot scrape its own website: it needs exactly this — a token
+based sign-in it can hold onto, a call that lists the customer's properties, and
+a call that returns metered usage for a date range. Everything asked for here is
+a strict subset of what an app requires, and an app needs a good deal more
+besides: bills, payments, concessions, faults, notifications.
+
+So the question is not whether to build it, but whether the small part of it
+that already exists gets written down. Publishing these two first has a
+practical advantage too — a handful of technical customers will exercise the
+contract, find the awkward edges, and report them, long before an app in the
+store depends on it. That is free integration testing by people who are
+motivated to be careful, and we would rather do it early than have an app ship
+around the same problems we have already worked through.
+
 **Submit your logo to the Home Assistant brands repository.** Home Assistant
 shows an integration's icon from
 [home-assistant/brands](https://github.com/home-assistant/brands). Yours is not
