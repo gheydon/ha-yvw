@@ -497,6 +497,20 @@ Nothing here can be taken on trust, and it should not be: the source is short,
 and every outbound request is made in `aura.py` and `auth.py`. Reading them is
 the only assurance worth having.
 
+### Do say hello
+
+A consequence of collecting nothing is that there is no way of knowing whether
+anybody is using this. If you are, I would genuinely like to hear about it —
+[open an issue](https://github.com/gheydon/ha-yvw/issues) and say so.
+
+It is welcome for its own sake, and it is also useful. How many properties your
+login covers, when your meter publishes each morning, whether your session
+behaves like mine: those are the things that shaped this integration, and every
+one of them was worked out from a single account. A second account is worth more
+than any amount of guessing.
+
+Bug reports and unhappy experiences are just as welcome as the other kind.
+
 ## Logo
 
 A droplet holding a valley and a river: a nod to the name rather than anything
