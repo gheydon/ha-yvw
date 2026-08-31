@@ -425,6 +425,7 @@ class YvwOptionsFlow(OptionsFlow):
                         max=CATCHUP_UNTIL_HOUR - 1,
                         step=1,
                         mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="am",
                     )
                 ),
                 vol.Required(
@@ -445,4 +446,4 @@ class YvwOptionsFlow(OptionsFlow):
         coordinator = getattr(entry, "runtime_data", None)
         if coordinator is None:
             return "Not running."
-        return f"Measured so far: {coordinator.probe_state.summary}."
+        return f"Session timeout: {coordinator.probe_state.summary}."

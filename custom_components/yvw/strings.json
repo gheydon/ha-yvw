@@ -84,14 +84,21 @@
   "options": {
     "step": {
       "init": {
-        "title": "Yarra Valley Water options",
-        "description": "Readings for a day appear the following morning. From the hour set here, the integration looks every ten minutes until yesterday is complete, then waits until tomorrow; it gives up for the day at 11am. Starting earlier finds them sooner at the cost of a few more requests.\n\nHow often to touch the portal so the sign-in session does not lapse. Lower is safer but talks to Yarra Valley Water more often; higher is quieter but risks the session expiring, which needs a new SMS code.\n\nFinding the timeout stretches the interval a step at a time until a session does lapse, which brackets the real limit. It ends by costing one verification code, then settles on a safe interval and switches itself off.\n\nIncluding the session in diagnostics puts your live sign-in in that file in the clear, so anyone who reads it can use your account until the session lapses. Leave it off unless someone is helping you debug, and never post such a file publicly.\n\n{findings}",
+        "title": "Yarra Valley Water",
+        "description": "{findings}",
         "data": {
-          "keepalive_minutes": "Keep-alive interval",
-          "probe_session_timeout": "Find the session timeout",
-          "probe_step_minutes": "Increase by, each time it survives",
-          "include_session_in_diagnostics": "Include the session in diagnostics",
-          "catchup_from_hour": "Start looking for yesterday's readings at (hour)"
+          "catchup_from_hour": "Start looking at",
+          "keepalive_minutes": "Keep the session alive every",
+          "probe_session_timeout": "Measure the session timeout",
+          "probe_step_minutes": "Increase the gap by",
+          "include_session_in_diagnostics": "Include the session in diagnostics"
+        },
+        "data_description": {
+          "catchup_from_hour": "Hour of the morning to start looking for yesterday's readings. They are checked for every ten minutes until they arrive, then not again until tomorrow. Looking earlier finds them sooner; looking later makes fewer requests. Given up on at 11am.",
+          "keepalive_minutes": "Minutes between touching the portal so the sign-in does not lapse. A session has been measured surviving two hours untouched. Lower is safer; higher is quieter but risks needing a new SMS code.",
+          "probe_session_timeout": "Stretches the gap a little further each time until a session does lapse, which finds the real limit. It ends by costing one verification code, then settles on a safe interval and switches itself off.",
+          "probe_step_minutes": "How much longer each measurement waits than the last one that survived. Larger steps reach an answer sooner but bracket it more loosely.",
+          "include_session_in_diagnostics": "Puts your live sign-in into the diagnostics download in the clear, so anyone who reads that file can use your account until the session lapses. Leave off unless someone is helping you debug, and never post such a file publicly."
         }
       }
     }
