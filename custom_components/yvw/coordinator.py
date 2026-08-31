@@ -21,12 +21,13 @@ from homeassistant.util import dt as dt_util
 from .api import UsageReading, YvwApi
 from .const import (
     CATCHUP_RETRY,
-    CATCHUP_UNTIL_HOUR,
     CONF_CATCHUP_FROM_HOUR,
+    CONF_CATCHUP_HOURS,
     CONF_KEEPALIVE_MINUTES,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
     DEFAULT_CATCHUP_FROM_HOUR,
+    DEFAULT_CATCHUP_HOURS,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
     DOMAIN,
@@ -195,8 +196,17 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         hour = self.config_entry.options.get(
             CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
         )
-        # A start at or past the give-up hour would mean never looking at all.
-        return min(int(hour), CATCHUP_UNTIL_HOUR - 1)
+        return max(0, min(int(hour), 23))
+
+    @property
+    def catchup_hours(self) -> int:
+        """Return how long to keep looking each morning."""
+        hours = self.config_entry.options.get(
+            CONF_CATCHUP_HOURS, DEFAULT_CATCHUP_HOURS
+        )
+        # Past midnight the window would run into the next day's, so it stops
+        # at the end of the day it started.
+        return max(1, min(int(hours), 24 - self.catchup_from_hour))
 
     @property
     def configured_interval_minutes(self) -> int:
@@ -518,7 +528,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             return self._until_tomorrow_morning(now)
         if now.hour < self.catchup_from_hour:
             return self._morning(now) - now
-        if now.hour >= CATCHUP_UNTIL_HOUR:
+        if now.hour >= self.catchup_from_hour + self.catchup_hours:
             return self._until_tomorrow_morning(now)
         return CATCHUP_RETRY
 

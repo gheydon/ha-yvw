@@ -117,17 +117,18 @@ A day's readings appear the following morning, at no time the portal publishes.
 Rather than polling blindly around the clock, the integration aims at that:
 
 - from **4am** it looks every **ten minutes** for yesterday's readings
-- as soon as yesterday is complete it stops, and waits until tomorrow morning
-- if yesterday has still not appeared by **11am** it gives up for the day
+- as soon as yesterday is complete it stops, and waits until tomorrow
+- after **6 hours** of looking it gives up until tomorrow
 
-The starting hour is under **Configure**, so it survives upgrades. Starting
-earlier finds the readings sooner at the cost of a few more attempts; starting
-later makes fewer requests and notices later. Observed on one meter, readings
-appeared shortly after 6am.
+Both the hour it starts and how long it keeps looking are under **Configure**,
+so they survive upgrades. Starting earlier finds the readings sooner at the cost
+of a few more attempts; a longer window suits a meter that publishes late.
+Observed on one meter, readings appeared shortly after 6am.
 
 That last rule matters. A meter that reported only part of a day is never going
-to finish it, and without a cut-off the integration would ask every ten minutes
-until midnight for readings that are not coming.
+to finish it, and without a stopping point the integration would ask every ten
+minutes until midnight for readings that are not coming. A window is never
+allowed to run past midnight into the next day's.
 
 In the ordinary case that is one or two requests a day, replacing a blind poll
 every twelve hours that could sit half a day behind.

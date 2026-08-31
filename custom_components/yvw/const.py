@@ -112,10 +112,11 @@ CATCHUP_RETRY = timedelta(minutes=10)
 # to stay ahead of the start.
 MIN_CATCHUP_FROM_HOUR = 0
 
-# Give up for the day if yesterday has still not appeared by mid-morning. A
-# meter that reported only part of a day would otherwise be retried every ten
-# minutes until midnight, for readings that are never going to arrive.
-CATCHUP_UNTIL_HOUR = 11
+# How long to keep looking each morning. A meter that reported only part of a
+# day is not going to finish it, and without a stopping point the integration
+# would ask every ten minutes until midnight for readings that are not coming.
+CONF_CATCHUP_HOURS = "catchup_hours"
+DEFAULT_CATCHUP_HOURS = 6
 
 # A full day of hourly readings.
 HOURS_IN_A_DAY = 24

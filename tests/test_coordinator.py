@@ -20,10 +20,10 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 from custom_components.yvw.api import UsageReading
 from custom_components.yvw.const import (
     CATCHUP_RETRY,
-    CATCHUP_UNTIL_HOUR,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
     CONF_CATCHUP_FROM_HOUR,
+    CONF_CATCHUP_HOURS,
     CONF_KEEPALIVE_MINUTES,
     CONF_METER_SERIAL,
     CONF_PROBE_ENABLED,
@@ -761,12 +761,22 @@ def test_the_hour_it_starts_looking_can_be_moved(hass: HomeAssistant) -> None:
     )
 
 
-def test_a_start_hour_past_the_give_up_hour_is_pulled_back(
+def test_the_window_stops_at_the_end_of_the_day_it_started(
     hass: HomeAssistant,
 ) -> None:
-    """Starting at or after the give-up hour would mean never looking at all."""
+    """Running past midnight would collide with the next day's window."""
     coordinator = build_coordinator(
-        hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: CATCHUP_UNTIL_HOUR + 3}
+        hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: 22, CONF_CATCHUP_HOURS: 12}
     )
 
-    assert coordinator.catchup_from_hour == CATCHUP_UNTIL_HOUR - 1
+    assert coordinator.catchup_hours == 2
+
+
+def test_how_long_to_keep_looking_can_be_changed(hass: HomeAssistant) -> None:
+    """A meter that publishes late needs a longer window than one that does not."""
+    # Default is four in the morning for six hours, so ten is too late.
+    assert _at(hass, 10, complete=False) == timedelta(hours=18)
+    # Given ten hours it is still within the window.
+    assert _at(hass, 10, complete=False, options={CONF_CATCHUP_HOURS: 10}) == (
+        CATCHUP_RETRY
+    )

@@ -40,10 +40,10 @@ from .api import AccountInfo, AccountSummary, YvwApi
 from .aura import YvwAuraClient
 from .auth import CODE_LENGTH, YvwLogin
 from .const import (
-    CATCHUP_UNTIL_HOUR,
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
     CONF_CATCHUP_FROM_HOUR,
+    CONF_CATCHUP_HOURS,
     CONF_COOKIES,
     CONF_INCLUDE_SESSION,
     CONF_KEEPALIVE_MINUTES,
@@ -53,6 +53,7 @@ from .const import (
     CONF_SID,
     CONF_SIGNED_IN_AT,
     DEFAULT_CATCHUP_FROM_HOUR,
+    DEFAULT_CATCHUP_HOURS,
     DEFAULT_INCLUDE_SESSION,
     DEFAULT_KEEPALIVE_MINUTES,
     DEFAULT_PROBE_STEP_MINUTES,
@@ -381,11 +382,36 @@ class YvwOptionsFlow(OptionsFlow):
                     CONF_PROBE_STEP_MINUTES: int(user_input[CONF_PROBE_STEP_MINUTES]),
                     CONF_INCLUDE_SESSION: user_input[CONF_INCLUDE_SESSION],
                     CONF_CATCHUP_FROM_HOUR: int(user_input[CONF_CATCHUP_FROM_HOUR]),
+                    CONF_CATCHUP_HOURS: int(user_input[CONF_CATCHUP_HOURS]),
                 }
             )
 
         schema = vol.Schema(
             {
+                # Readings first: it is what the integration is for. Session
+                # handling follows, and the diagnostics switch last.
+                vol.Required(
+                    CONF_CATCHUP_FROM_HOUR,
+                    default=options.get(
+                        CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
+                    ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0, max=23, step=1, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Required(
+                    CONF_CATCHUP_HOURS,
+                    default=options.get(CONF_CATCHUP_HOURS, DEFAULT_CATCHUP_HOURS),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1,
+                        max=24,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="hours",
+                    )
+                ),
                 vol.Required(
                     CONF_KEEPALIVE_MINUTES,
                     default=options.get(CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES),
@@ -412,20 +438,6 @@ class YvwOptionsFlow(OptionsFlow):
                         step=1,
                         mode=NumberSelectorMode.BOX,
                         unit_of_measurement="minutes",
-                    )
-                ),
-                vol.Required(
-                    CONF_CATCHUP_FROM_HOUR,
-                    default=options.get(
-                        CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
-                    ),
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0,
-                        max=CATCHUP_UNTIL_HOUR - 1,
-                        step=1,
-                        mode=NumberSelectorMode.BOX,
-                        unit_of_measurement="am",
                     )
                 ),
                 vol.Required(
