@@ -123,7 +123,14 @@ Rather than polling blindly around the clock, the integration aims at that:
 Both the hour it starts and how long it keeps looking are under **Configure**,
 so they survive upgrades. Starting earlier finds the readings sooner at the cost
 of a few more attempts; a longer window suits a meter that publishes late.
-Observed on one meter, readings appeared shortly after 6am.
+
+When readings actually appear is not documented, and is worth measuring on your
+own meter rather than assuming. On the one this was built against, looking at
+4am found yesterday complete on the first attempt — so they had arrived some
+time before that, and the hour they really land is still unknown. If you set the
+start early and the first attempt of the day always succeeds, you can move it
+earlier again; if the first few attempts come back empty, you have found roughly
+when your meter publishes and can start there.
 
 That last rule matters. A meter that reported only part of a day is never going
 to finish it, and without a stopping point the integration would ask every ten
