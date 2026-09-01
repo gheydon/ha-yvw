@@ -104,9 +104,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._last_keepalive: datetime | None = None
         self._session_dead = False
         self._expired_at: datetime | None = None
-        # When the session last changed between working and not, so the sensor
-        # can say how long it has been that way.
-        self._status_since: datetime = dt_util.utcnow()
+        # When the session last changed between working and not. A session that
+        # is still good has been good since it was signed in, which is what the
+        # user wants to see — not the time since Home Assistant last started.
+        self._status_since: datetime = signed_in_at or dt_util.utcnow()
         self._cancel_watchdog: Callable[[], None] | None = None
         self._stall_reported = False
 

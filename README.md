@@ -164,6 +164,9 @@ that dashboard — the portal's own billing figures are not used.
 | Last reading | When the meter last reported, which is the end of the hour it covers |
 | Session | Whether the sign-in still works: `active` or `expired` |
 
+The keep-alive has no sensor of its own — when it last ran is an attribute of
+the session sensor, which is the thing it exists to protect.
+
 ### Seeing the session's history
 
 The session sensor reports `active` or `expired`, which means its **History**
@@ -173,7 +176,7 @@ timeline rather than a graph. Its attributes carry the detail:
 | attribute | |
 |---|---|
 | `since` | when it last changed between working and not |
-| `hours_in_state` | how long it has been that way |
+| `hours_in_state` | how long it has been that way, counted from the sign-in rather than from the last restart |
 | `signed_in_at`, `session_age` | when the sign-in was made, and its age |
 | `expired_at` | when it lapsed, if it has |
 | `last_contact`, `last_keepalive` | when the portal was last touched |

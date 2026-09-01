@@ -81,7 +81,7 @@ async def test_setup_creates_the_sensors(
         entity_id: hass.states.get(entity_id).state
         for entity_id in hass.states.async_entity_ids("sensor")
     }
-    assert len(states) == 5
+    assert len(states) == 4
     assert states["sensor.1_example_st_suburb_vic_3000_latest_hourly_usage"] == "24.0"
     assert states["sensor.1_example_st_suburb_vic_3000_last_full_day_usage"] == "300.0"
     # The last reading is stamped when the meter reported: the end of the hour.

@@ -780,3 +780,38 @@ def test_how_long_to_keep_looking_can_be_changed(hass: HomeAssistant) -> None:
     assert _at(hass, 10, complete=False, options={CONF_CATCHUP_HOURS: 10}) == (
         CATCHUP_RETRY
     )
+
+
+def test_a_restart_does_not_look_like_a_new_session(hass: HomeAssistant) -> None:
+    """How long the session has been good spans restarts.
+
+    Starting the clock at startup would report a fortnight-old session as being
+    a few minutes old every time Home Assistant is restarted.
+    """
+    signed_in = dt_util.utcnow() - timedelta(days=3)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=ACCOUNT, options={})
+    entry.add_to_hass(hass)
+    coordinator = YvwCoordinator(
+        hass,
+        entry,
+        StubApi(),
+        ACCOUNT,
+        METER,
+        ADDRESS,
+        portal_tz=MELBOURNE,
+        probe=ProbeStore(hass),
+        signed_in_at=signed_in,
+    )
+
+    assert coordinator.status_since == signed_in
+    assert coordinator.signed_in_at == signed_in
+
+
+def test_without_a_recorded_sign_in_the_clock_starts_now(
+    hass: HomeAssistant,
+) -> None:
+    """Entries made before the sign-in time was recorded still work."""
+    coordinator = build_coordinator(hass, StubApi())
+
+    assert coordinator.status_since is not None
+    assert coordinator.signed_in_at is None

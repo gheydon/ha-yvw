@@ -35,7 +35,6 @@ async def async_setup_entry(
             LatestHourlyUsageSensor(coordinator),
             LastFullDayUsageSensor(coordinator),
             LastReadingSensor(coordinator),
-            LastKeepaliveSensor(coordinator),
             SessionStatusSensor(coordinator),
         ]
     )
@@ -118,35 +117,6 @@ class LastReadingSensor(YvwEntity, SensorEntity):
         return latest.end
 
 
-class LastKeepaliveSensor(YvwEntity, SensorEntity):
-    """When the portal was last touched to stop the session going idle.
-
-    Mostly of interest while measuring how long a session survives, where the
-    gap between these is the thing being tested.
-    """
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator: YvwCoordinator) -> None:
-        """Initialise the sensor."""
-        super().__init__(coordinator, "last_keepalive")
-
-    @property
-    def native_value(self) -> datetime | None:
-        """Return the time of the last successful ping."""
-        return self.coordinator.last_keepalive
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str] | None:
-        """Return what the measurement has found so far."""
-        return {
-            "interval": str(self.coordinator.keepalive_interval),
-            "calibrating": str(self.coordinator.calibrating),
-            "measurement": self.coordinator.probe_state.summary,
-        }
-
-
 class SessionStatusSensor(YvwEntity, SensorEntity):
     """Whether the portal session is usable, and the story around it.
 
@@ -175,9 +145,11 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
         coordinator = self.coordinator
         signed_in = coordinator.signed_in_at
         age = dt_util.utcnow() - signed_in if signed_in else None
-        # Rounded to whole hours on purpose. Counting in minutes would write a
-        # new history row every time the entity is refreshed, for a number
-        # nobody reads that precisely.
+        # Measured from the sign-in rather than from startup, so a restart does
+        # not appear to be the session having only just begun. Rounded to whole
+        # hours on purpose: counting in minutes would write a new history row
+        # every time the entity is refreshed, for a number nobody reads that
+        # precisely.
         in_state = dt_util.utcnow() - coordinator.status_since
         return {
             "since": coordinator.status_since.isoformat(),

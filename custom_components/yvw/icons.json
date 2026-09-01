@@ -10,9 +10,6 @@
       "last_reading": {
         "default": "mdi:clock-check-outline"
       },
-      "last_keepalive": {
-        "default": "mdi:heart-pulse"
-      },
       "session_status": {
         "default": "mdi:key-chain-variant"
       }
