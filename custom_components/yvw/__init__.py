@@ -23,6 +23,7 @@ from .const import (
 from .context_store import ContextStore
 from .coordinator import YvwConfigEntry, YvwCoordinator
 from .probe import ProbeStore
+from .schedule_store import ScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +66,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     probe = ProbeStore(hass)
     await probe.async_load()
 
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+
     coordinator = YvwCoordinator(
         hass,
         entry,
@@ -74,6 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
         address=entry.data[CONF_ADDRESS],
         portal_tz=portal_tz,
         probe=probe,
+        schedule=schedule,
         signed_in_at=dt_util.parse_datetime(
             entry.data.get(CONF_SIGNED_IN_AT) or ""
         ),
@@ -111,3 +116,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> None
     contexts = ContextStore(hass)
     await contexts.async_load()
     await contexts.async_forget(entry.entry_id)
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    await schedule.async_forget(entry.entry_id)

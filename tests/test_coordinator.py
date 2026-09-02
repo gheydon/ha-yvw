@@ -21,6 +21,7 @@ from custom_components.yvw.api import UsageReading
 from custom_components.yvw.const import (
     CATCHUP_RETRY,
     CONF_ACCOUNT_ID,
+    CONF_ADAPTIVE_START,
     CONF_ADDRESS,
     CONF_CATCHUP_FROM_HOUR,
     CONF_CATCHUP_HOURS,
@@ -815,3 +816,59 @@ def test_without_a_recorded_sign_in_the_clock_starts_now(
 
     assert coordinator.status_since is not None
     assert coordinator.signed_in_at is None
+
+
+async def test_only_the_first_find_of_the_day_teaches(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Later polls would each report a shorter wait than the last.
+
+    Learning from every one would drag the start earlier for no reason.
+    """
+    from custom_components.yvw.schedule_store import ScheduleStore
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=ACCOUNT, options={})
+    entry.add_to_hass(hass)
+    coordinator = YvwCoordinator(
+        hass, entry, StubApi(), ACCOUNT, METER, ADDRESS,
+        portal_tz=MELBOURNE, probe=ProbeStore(hass), schedule=schedule,
+    )
+
+    recorded: list[timedelta] = []
+    original = schedule.async_record
+
+    async def counted(entry_id, minutes, took, today):
+        recorded.append(took)
+        return await original(entry_id, minutes, took, today)
+
+    schedule.async_record = counted
+
+    await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+    await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+
+    assert len(recorded) == 1
+
+
+async def test_nothing_is_learned_when_learning_is_off(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Someone who has set an hour deliberately should keep it."""
+    from custom_components.yvw.schedule_store import ScheduleStore
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=ACCOUNT, options={CONF_ADAPTIVE_START: False}
+    )
+    entry.add_to_hass(hass)
+    coordinator = YvwCoordinator(
+        hass, entry, StubApi(), ACCOUNT, METER, ADDRESS,
+        portal_tz=MELBOURNE, probe=ProbeStore(hass), schedule=schedule,
+    )
+
+    await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+
+    assert schedule.get(entry.entry_id) is None
+    assert coordinator.catchup_from_minutes == coordinator.catchup_from_hour * 60

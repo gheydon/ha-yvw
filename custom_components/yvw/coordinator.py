@@ -21,11 +21,13 @@ from homeassistant.util import dt as dt_util
 from .api import UsageReading, YvwApi
 from .const import (
     CATCHUP_RETRY,
+    CONF_ADAPTIVE_START,
     CONF_CATCHUP_FROM_HOUR,
     CONF_CATCHUP_HOURS,
     CONF_KEEPALIVE_MINUTES,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
+    DEFAULT_ADAPTIVE_START,
     DEFAULT_CATCHUP_FROM_HOUR,
     DEFAULT_CATCHUP_HOURS,
     DEFAULT_KEEPALIVE_MINUTES,
@@ -47,6 +49,7 @@ from .const import (
 )
 from .exceptions import YvwAuthError, YvwError
 from .probe import ProbeState, ProbeStore
+from .schedule_store import LearnedStart, ScheduleStore
 from .statistics import async_insert_statistics, statistic_id_for
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +85,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         portal_tz: tzinfo,
         probe: ProbeStore,
         signed_in_at: datetime | None = None,
+        schedule: ScheduleStore | None = None,
     ) -> None:
         """Initialise the coordinator."""
         super().__init__(
@@ -98,6 +102,10 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._portal_tz = portal_tz
         self._probe = probe
         self._signed_in_at = signed_in_at
+        self._schedule = schedule
+        # The day the readings were last found, so a morning is only learned
+        # from once however many times the coordinator runs.
+        self._found_on: date | None = None
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
@@ -192,8 +200,34 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         ) and not self.probe_state.concluded
 
     @property
+    def learning_start(self) -> bool:
+        """Return whether the start steers itself."""
+        return bool(
+            self.config_entry.options.get(CONF_ADAPTIVE_START, DEFAULT_ADAPTIVE_START)
+        )
+
+    @property
+    def learned_start(self) -> LearnedStart | None:
+        """Return the start learned from recent mornings, if any."""
+        if self._schedule is None or not self.learning_start:
+            return None
+        return self._schedule.get(self.config_entry.entry_id)
+
+    @property
+    def catchup_from_minutes(self) -> int:
+        """Return how far into the day the look for readings begins.
+
+        The configured hour is where it starts from; once it has watched a few
+        mornings it uses what it learned instead.
+        """
+        learned = self.learned_start
+        if learned is not None:
+            return learned.minutes
+        return self.catchup_from_hour * 60
+
+    @property
     def catchup_from_hour(self) -> int:
-        """Return the hour the daily look for yesterday's readings begins."""
+        """Return the configured hour the daily look begins."""
         hour = self.config_entry.options.get(
             CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
         )
@@ -207,7 +241,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         )
         # Past midnight the window would run into the next day's, so it stops
         # at the end of the day it started.
-        return max(1, min(int(hours), 24 - self.catchup_from_hour))
+        return max(1, min(int(hours), 24 - (self.catchup_from_minutes // 60)))
 
     @property
     def configured_interval_minutes(self) -> int:
@@ -505,6 +539,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._async_fire_new_readings(added)
 
         data = self._summarise(readings)
+        await self._async_learn_from(data)
         self.update_interval = self._next_poll(data)
         _LOGGER.debug(
             "Yesterday %s; next poll in %s",
@@ -512,6 +547,38 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self.update_interval,
         )
         return data
+
+    async def _async_learn_from(self, data: YvwData) -> None:
+        """Move tomorrow's start based on how long today's readings took.
+
+        Only the moment they are first found says anything: later polls on the
+        same day would report a shorter and shorter wait and drag the start
+        earlier for no reason.
+        """
+        if self._schedule is None or not self.learning_start:
+            return
+        now = datetime.now(self._portal_tz)
+        if not data.yesterday_complete or self._found_on == now.date():
+            return
+        self._found_on = now.date()
+
+        took = now - self._morning(now)
+        if took < timedelta(0):
+            # Found before the window even opened, which is not a measurement
+            # of anything: a restart or a manual reload rather than a morning.
+            return
+
+        learned = await self._schedule.async_record(
+            self.config_entry.entry_id,
+            self.catchup_from_minutes,
+            took,
+            now.date(),
+        )
+        _LOGGER.debug(
+            "Readings found %s after looking began; starting at %s tomorrow",
+            took,
+            learned.clock,
+        )
 
     def _next_poll(self, data: YvwData) -> timedelta:
         """Return how long to wait before looking for readings again.
@@ -527,16 +594,17 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         if data.yesterday_complete:
             return self._until_tomorrow_morning(now)
-        if now.hour < self.catchup_from_hour:
+        if now < self._morning(now):
             return self._morning(now) - now
-        if now.hour >= self.catchup_from_hour + self.catchup_hours:
+        if now >= self._morning(now) + timedelta(hours=self.catchup_hours):
             return self._until_tomorrow_morning(now)
         return CATCHUP_RETRY
 
     def _morning(self, now: datetime) -> datetime:
         """Return the start of today's catch-up window."""
+        minutes = self.catchup_from_minutes
         return now.replace(
-            hour=self.catchup_from_hour, minute=0, second=0, microsecond=0
+            hour=minutes // 60, minute=minutes % 60, second=0, microsecond=0
         )
 
     def _until_tomorrow_morning(self, now: datetime) -> timedelta:

@@ -121,24 +121,41 @@ Rather than polling blindly around the clock, the integration aims at that:
 - after **6 hours** of looking it gives up until tomorrow
 
 Both the hour it starts and how long it keeps looking are under **Configure**,
-so they survive upgrades. Starting earlier finds the readings sooner at the cost
-of a few more attempts; a longer window suits a meter that publishes late.
+so they survive upgrades.
 
-When readings actually appear is not documented, and is worth measuring on your
-own meter rather than assuming. On the one this was built against, looking at
-4am found yesterday complete on the first attempt — so they had arrived some
-time before that, and the hour they really land is still unknown. If you set the
-start early and the first attempt of the day always succeeds, you can move it
-earlier again; if the first few attempts come back empty, you have found roughly
-when your meter publishes and can start there.
-
-That last rule matters. A meter that reported only part of a day is never going
-to finish it, and without a stopping point the integration would ask every ten
-minutes until midnight for readings that are not coming. A window is never
-allowed to run past midnight into the next day's.
+That stopping point matters. A meter that reported only part of a day is never
+going to finish it, and without one the integration would ask every ten minutes
+until midnight for readings that are not coming. A window is never allowed to
+run past midnight into the next day's.
 
 In the ordinary case that is one or two requests a day, replacing a blind poll
 every twelve hours that could sit half a day behind.
+
+### Learning when your meter publishes
+
+When readings actually appear is not documented, differs between meters, and is
+not fixed. Smart meters are still being rolled out across the network, and the
+more of them there are to process each night, the later a given meter's readings
+are likely to land. An hour chosen today is the wrong hour eventually.
+
+So the start time steers itself. **Learn when readings appear** is on by
+default, and after each successful morning it moves the start by half an hour:
+
+- **found on the very first attempt** — they were already waiting, and had been
+  for an unknown length of time. Start half an hour earlier tomorrow.
+- **found after more than an hour of looking** — that is an hour of requests
+  finding nothing. Start half an hour later tomorrow.
+- **anything in between** — this is the intended state. Leave it alone.
+
+Over a few mornings it walks to just before publication and settles there, then
+follows if publication drifts later. It will not move earlier than midnight, or
+later than 10am — past either, something other than the schedule is wrong, and
+chasing it would only hide that. Only the first find of each day counts, so a
+restart or an extra poll does not drag the time around.
+
+The learned time is shown under **Configure**, below the settings. Turning
+learning off pins the start back to the hour you set; what was learned is set
+aside rather than discarded, and is picked up again if you turn it back on.
 
 ## Using it on the Water dashboard
 

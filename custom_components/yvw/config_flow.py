@@ -41,6 +41,7 @@ from .aura import YvwAuraClient
 from .auth import CODE_LENGTH, YvwLogin
 from .const import (
     CONF_ACCOUNT_ID,
+    CONF_ADAPTIVE_START,
     CONF_ADDRESS,
     CONF_CATCHUP_FROM_HOUR,
     CONF_CATCHUP_HOURS,
@@ -52,6 +53,7 @@ from .const import (
     CONF_PROBE_STEP_MINUTES,
     CONF_SID,
     CONF_SIGNED_IN_AT,
+    DEFAULT_ADAPTIVE_START,
     DEFAULT_CATCHUP_FROM_HOUR,
     DEFAULT_CATCHUP_HOURS,
     DEFAULT_INCLUDE_SESSION,
@@ -383,6 +385,7 @@ class YvwOptionsFlow(OptionsFlow):
                     CONF_INCLUDE_SESSION: user_input[CONF_INCLUDE_SESSION],
                     CONF_CATCHUP_FROM_HOUR: int(user_input[CONF_CATCHUP_FROM_HOUR]),
                     CONF_CATCHUP_HOURS: int(user_input[CONF_CATCHUP_HOURS]),
+                    CONF_ADAPTIVE_START: user_input[CONF_ADAPTIVE_START],
                 }
             )
 
@@ -412,6 +415,10 @@ class YvwOptionsFlow(OptionsFlow):
                         unit_of_measurement="hours",
                     )
                 ),
+                vol.Required(
+                    CONF_ADAPTIVE_START,
+                    default=options.get(CONF_ADAPTIVE_START, DEFAULT_ADAPTIVE_START),
+                ): bool,
                 vol.Required(
                     CONF_KEEPALIVE_MINUTES,
                     default=options.get(CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES),
@@ -458,4 +465,10 @@ class YvwOptionsFlow(OptionsFlow):
         coordinator = getattr(entry, "runtime_data", None)
         if coordinator is None:
             return "Not running."
-        return f"Session timeout: {coordinator.probe_state.summary}."
+        learned = coordinator.learned_start
+        looking = (
+            f"Looking from {learned.clock}, learned from recent mornings."
+            if learned
+            else "Looking from the hour set below."
+        )
+        return f"{looking}\nSession timeout: {coordinator.probe_state.summary}."

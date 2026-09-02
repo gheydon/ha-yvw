@@ -118,6 +118,29 @@ MIN_CATCHUP_FROM_HOUR = 0
 CONF_CATCHUP_HOURS = "catchup_hours"
 DEFAULT_CATCHUP_HOURS = 6
 
+# When readings are published is not documented, drifts as more meters are
+# rolled out, and differs between meters. Rather than asking everyone to guess
+# it, the start can steer itself: aim to begin shortly before the readings
+# appear, so the first few attempts find them without a long run of empty ones.
+CONF_ADAPTIVE_START = "adaptive_start"
+DEFAULT_ADAPTIVE_START = True
+
+# Found on the very first attempt means the readings were already waiting and
+# the start could have been earlier. Taking longer than this to find them means
+# it began too early and spent the difference on empty requests.
+ADAPTIVE_TARGET_MAX = timedelta(hours=1)
+
+# How far the start moves in a day. Small enough not to chase a single unusual
+# morning, large enough to cross an hour in a couple of days.
+ADAPTIVE_STEP = timedelta(minutes=30)
+
+# The start is never learned outside these hours: before midnight it would
+# belong to the wrong day, and past mid-morning something else is wrong.
+ADAPTIVE_EARLIEST_MINUTES = 0
+ADAPTIVE_LATEST_MINUTES = 10 * 60
+
+SCHEDULE_STORAGE_KEY = f"{DOMAIN}.schedule"
+
 # A full day of hourly readings.
 HOURS_IN_A_DAY = 24
 
