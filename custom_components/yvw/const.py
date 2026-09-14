@@ -108,6 +108,18 @@ CONF_CATCHUP_FROM_HOUR = "catchup_from_hour"
 DEFAULT_CATCHUP_FROM_HOUR = 4
 CATCHUP_RETRY = timedelta(minutes=10)
 
+# Home Assistant re-arms the next poll from the coordinator's interval whatever
+# the outcome, so a failure has to choose its own. Inheriting the interval a
+# successful morning set means a single timed-out request stops the integration
+# looking again for a day, with every entity unavailable in the meantime. When
+# readings are still owed the window's own cadence applies; otherwise this, so
+# the entities come back without asking the portal every few minutes.
+FAILURE_RETRY = timedelta(minutes=30)
+
+# Doubling from there, so a portal that is down for hours is asked a handful of
+# times rather than fifty. Capped so that recovery is still noticed promptly.
+MAX_FAILURE_RETRY = timedelta(hours=2)
+
 # Nothing is gained by looking before the small hours, and the give-up hour has
 # to stay ahead of the start.
 MIN_CATCHUP_FROM_HOUR = 0

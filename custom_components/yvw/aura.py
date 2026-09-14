@@ -51,7 +51,7 @@ from .const import (
     DISPATCH_METHOD,
     USAGE_PAGE,
 )
-from .exceptions import YvwApiError, YvwAuthError, YvwCannotConnect
+from .exceptions import YvwApiError, YvwAuthError, YvwCannotConnect, cannot_connect
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -317,8 +317,8 @@ async def async_load_page_context(
                     "Session expired: the portal keeps redirecting to the login page"
                 ) from err
             raise YvwCannotConnect(f"The portal redirected in a loop: {err}") from err
-        except aiohttp.ClientError as err:
-            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise cannot_connect(err) from err
 
         redirect = find_client_redirect(html)
         if redirect is None:
@@ -405,7 +405,7 @@ class YvwAuraClient:
                 if response.status != 200:
                     return None
                 return (await response.text())[:200]
-        except aiohttp.ClientError:
+        except (aiohttp.ClientError, TimeoutError):
             return None
 
     async def async_invoke(
@@ -473,7 +473,7 @@ class YvwAuraClient:
                 timeout=_REQUEST_TIMEOUT,
             ) as response:
                 text = await response.text()
-        except aiohttp.ClientError as err:
-            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise cannot_connect(err) from err
 
         return extract_return_value(parse_aura_body(text))

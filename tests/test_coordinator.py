@@ -11,6 +11,7 @@ from homeassistant.components.recorder import Recorder
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.recorder.common import (
@@ -34,7 +35,9 @@ from custom_components.yvw.const import (
     EVENT_AUTH_FAILED,
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
+    FAILURE_RETRY,
     KEEPALIVE_RETRY,
+    MAX_FAILURE_RETRY,
     MAX_KEEPALIVE_MINUTES,
     MAX_PROBE_MINUTES,
     UPDATE_INTERVAL,
@@ -872,3 +875,162 @@ async def test_nothing_is_learned_when_learning_is_off(
 
     assert schedule.get(entry.entry_id) is None
     assert coordinator.catchup_from_minutes == coordinator.catchup_from_hour * 60
+
+
+# --- Recovering from a failed poll ------------------------------------------
+
+
+async def _fail_at(
+    hass: HomeAssistant,
+    hour: int,
+    *,
+    error: Exception,
+    previous: timedelta,
+    failures: int = 1,
+) -> timedelta:
+    """Fail a poll at a given hour and return the wait it arms next."""
+    coordinator = build_coordinator(hass, StubApi(error=error))
+    coordinator.update_interval = previous
+    moment = datetime(2026, 8, 30, hour, 0, tzinfo=MELBOURNE)
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        for _ in range(failures):
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+    return coordinator.update_interval
+
+
+async def test_a_failed_poll_inside_the_window_tries_again_in_ten_minutes(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The interval is only recalculated on success, so a failure inherited it.
+
+    Home Assistant re-arms the next poll from update_interval whatever the
+    outcome. After a successful morning that interval is a full day, so one
+    timed-out request left the integration not looking again until tomorrow —
+    entities unavailable and a day of readings missed for a blip that lasted
+    forty-five seconds.
+    """
+    armed = await _fail_at(
+        hass, 7, error=YvwError("portal timed out"), previous=timedelta(hours=24)
+    )
+
+    assert armed == CATCHUP_RETRY
+
+
+async def test_a_failure_outside_the_window_does_not_wait_a_whole_day(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Nothing is owed, but everything is unavailable until a poll succeeds."""
+    armed = await _fail_at(
+        hass, 12, error=YvwError("portal down"), previous=timedelta(hours=16)
+    )
+
+    assert armed == FAILURE_RETRY
+
+
+async def test_repeated_failures_back_off_but_stay_bounded(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A portal that is down for hours should not be asked every half hour.
+
+    Nor should the wait grow without limit: the cap is what brings the entities
+    back promptly once it recovers.
+    """
+    armed = await _fail_at(
+        hass,
+        12,
+        error=YvwError("portal down"),
+        previous=timedelta(hours=16),
+        failures=6,
+    )
+
+    assert armed == MAX_FAILURE_RETRY
+
+
+async def test_backing_off_never_overshoots_the_next_window(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Waiting past the window would miss the morning it was backing off for."""
+    armed = await _fail_at(
+        hass,
+        3,
+        error=YvwError("portal down"),
+        previous=timedelta(hours=24),
+        failures=4,
+    )
+
+    # The window opens at four, an hour away — that, not a two hour backoff.
+    assert armed == timedelta(hours=1)
+
+
+async def test_a_recovered_poll_forgets_the_backoff(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Otherwise the next failure would start from the old ladder."""
+    api = StubApi(error=YvwError("portal down"))
+    coordinator = build_coordinator(hass, api)
+    moment = datetime(2026, 8, 30, 12, 0, tzinfo=MELBOURNE)
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        for _ in range(4):
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+        api.error = None
+        await coordinator._async_update_data()
+
+        api.error = YvwError("portal down again")
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+    assert coordinator.update_interval == FAILURE_RETRY
+
+
+async def test_a_session_that_expires_is_not_retried_on_a_backoff(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Nothing but the user can fix it, and reauth restarts polling."""
+    coordinator = build_coordinator(hass, StubApi(error=YvwAuthError("expired")))
+    coordinator.update_interval = timedelta(hours=24)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(hours=24)
+
+
+async def test_the_session_sensor_still_reports_when_a_poll_fails(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """It answers the question a failed poll raises, so it must not go with it.
+
+    Everything else going unavailable is right — the readings are stale. This
+    one says whether the session is gone or the portal merely hiccuped, which is
+    exactly what you look for when readings stop.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_SID: "session",
+            CONF_ACCOUNT_ID: ACCOUNT,
+            CONF_METER_SERIAL: METER,
+            CONF_ADDRESS: ADDRESS,
+        },
+        unique_id=ACCOUNT,
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.yvw.YvwApi", return_value=StubApi(hourly(24))):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        coordinator = entry.runtime_data
+        coordinator.api = StubApi(error=YvwError("portal timed out"))
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert coordinator.last_update_success is False
+    session = hass.states.get("sensor.1_example_st_suburb_vic_3000_session")
+    assert session is not None
+    assert session.state == "active"

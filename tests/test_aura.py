@@ -333,3 +333,24 @@ async def test_a_session_the_endpoint_rejects_twice_is_reported() -> None:
 
     with pytest.raises(YvwAuthError):
         await client.async_invoke_apex("C", "m", {})
+
+
+async def test_a_request_that_times_out_is_a_connection_problem() -> None:
+    """A total timeout raises TimeoutError, which is not an aiohttp.ClientError.
+
+    So it escaped every handler in the integration: the poll reported Home
+    Assistant's generic "Timeout fetching yvw data" rather than a transient
+    portal failure, and the keep-alive logged a traceback for what is an
+    ordinary network blip.
+    """
+    from custom_components.yvw.aura import async_load_page_context
+    from custom_components.yvw.exceptions import YvwCannotConnect
+
+    class Slow:
+        cookie_jar: list = []
+
+        def get(self, url, **kwargs):
+            raise TimeoutError
+
+    with pytest.raises(YvwCannotConnect):
+        await async_load_page_context(Slow(), "https://myaccount.yvw.com.au/myaccount/s/")

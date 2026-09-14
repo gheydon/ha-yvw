@@ -27,3 +27,19 @@ class YvwInvalidCode(YvwError):
 
 class YvwApiError(YvwError):
     """The portal returned an unexpected response."""
+
+
+def cannot_connect(err: BaseException) -> YvwCannotConnect:
+    """Describe a transport failure.
+
+    A timeout carries no message of its own, so the bare formatting of one read
+    as "Could not reach the YVW portal: " with nothing after the colon.
+    """
+    reason = str(err)
+    if not reason:
+        reason = (
+            "the request timed out"
+            if isinstance(err, TimeoutError)
+            else type(err).__name__
+        )
+    return YvwCannotConnect(f"Could not reach the YVW portal: {reason}")

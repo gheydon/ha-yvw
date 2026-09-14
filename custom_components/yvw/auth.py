@@ -42,9 +42,9 @@ from .const import (
 from .exceptions import (
     YvwApiError,
     YvwAuthError,
-    YvwCannotConnect,
     YvwInvalidAuth,
     YvwInvalidCode,
+    cannot_connect,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -286,8 +286,8 @@ class YvwLogin:
                 timeout=_TIMEOUT,
             ) as response:
                 text = await response.text()
-        except aiohttp.ClientError as err:
-            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise cannot_connect(err) from err
 
         try:
             result = extract_return_value(parse_aura_body(text))
@@ -362,8 +362,8 @@ class YvwLogin:
                 allow_redirects=True,
             ) as response:
                 returned = await response.text()
-        except aiohttp.ClientError as err:
-            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise cannot_connect(err) from err
 
         # An AJAX postback answers with a page fragment, which may still carry
         # the code fields whether or not the code was taken. Whether the session
@@ -429,8 +429,8 @@ class YvwLogin:
                 url, headers=page_headers(), timeout=_TIMEOUT, allow_redirects=True
             ) as response:
                 return await response.text(), str(response.url), response.status
-        except aiohttp.ClientError as err:
-            raise YvwCannotConnect(f"Could not reach the YVW portal: {err}") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise cannot_connect(err) from err
 
     async def _async_load_code_page(self) -> bool:
         """Follow the sign-in through to the verification page.

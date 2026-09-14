@@ -36,9 +36,11 @@ from .const import (
     EVENT_AUTH_FAILED,
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
+    FAILURE_RETRY,
     HOURS_IN_A_DAY,
     KEEPALIVE_JITTER,
     KEEPALIVE_RETRY,
+    MAX_FAILURE_RETRY,
     MAX_HISTORY_DAYS,
     MAX_KEEPALIVE_MINUTES,
     MAX_PROBE_MINUTES,
@@ -106,6 +108,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         # The day the readings were last found, so a morning is only learned
         # from once however many times the coordinator runs.
         self._found_on: date | None = None
+        # The day yesterday was last confirmed complete, and how many polls
+        # have failed in a row. A failure cannot ask the data whether readings
+        # are still owed: stale data claims yesterday is complete all day.
+        self._complete_for: date | None = None
+        self._failures = 0
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
@@ -505,6 +512,32 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     # --- Polling ------------------------------------------------------------
 
     async def _async_update_data(self) -> YvwData:
+        """Fetch readings, and choose when to look again whatever the outcome.
+
+        Home Assistant re-arms the next poll from the interval left on the
+        coordinator, so the failure path has to set one too. Without this it
+        inherited whatever the last success chose — after a successful morning,
+        a full day — and one timed-out request meant no further attempt until
+        tomorrow, with every entity unavailable until then.
+        """
+        try:
+            data = await self._async_poll()
+        except ConfigEntryAuthFailed:
+            # Only the user can fix this, and signing in again restarts polling.
+            raise
+        except Exception:
+            self._failures += 1
+            self.update_interval = self._after_failure()
+            _LOGGER.debug(
+                "Poll failed (%s in a row); looking again in %s",
+                self._failures,
+                self.update_interval,
+            )
+            raise
+        self._failures = 0
+        return data
+
+    async def _async_poll(self) -> YvwData:
         """Fetch readings, append them to statistics, and summarise the latest."""
         today = datetime.now(self._portal_tz).date()
         start_date = today - timedelta(days=MAX_HISTORY_DAYS)
@@ -539,6 +572,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self._async_fire_new_readings(added)
 
         data = self._summarise(readings)
+        if data.yesterday_complete:
+            # What a failure needs to know: whether today's readings are still
+            # owed. Stale data cannot answer that, because it says yesterday was
+            # complete right through tomorrow.
+            self._complete_for = datetime.now(self._portal_tz).date()
         await self._async_learn_from(data)
         self.update_interval = self._next_poll(data)
         _LOGGER.debug(
@@ -594,11 +632,35 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         if data.yesterday_complete:
             return self._until_tomorrow_morning(now)
+        if self._in_window(now):
+            return CATCHUP_RETRY
+        return self._next_window(now)
+
+    def _after_failure(self) -> timedelta:
+        """Return how long to wait after a poll that did not get through.
+
+        Readings still owed today are worth the window's own cadence: that is
+        what the window is for, and it already stops itself by mid-morning. With
+        nothing owed the only cost of waiting is that the entities stay
+        unavailable, so this backs off instead of retrying hard — but never past
+        the next window, which would miss the morning it was waiting for.
+        """
+        now = datetime.now(self._portal_tz)
+        if self._complete_for != now.date() and self._in_window(now):
+            return CATCHUP_RETRY
+        backoff = min(FAILURE_RETRY * 2 ** (self._failures - 1), MAX_FAILURE_RETRY)
+        return min(backoff, self._next_window(now))
+
+    def _in_window(self, now: datetime) -> bool:
+        """Return whether now is inside today's catch-up window."""
+        opens = self._morning(now)
+        return opens <= now < opens + timedelta(hours=self.catchup_hours)
+
+    def _next_window(self, now: datetime) -> timedelta:
+        """Return the wait until the catch-up window next opens."""
         if now < self._morning(now):
             return self._morning(now) - now
-        if now >= self._morning(now) + timedelta(hours=self.catchup_hours):
-            return self._until_tomorrow_morning(now)
-        return CATCHUP_RETRY
+        return self._until_tomorrow_morning(now)
 
     def _morning(self, now: datetime) -> datetime:
         """Return the start of today's catch-up window."""

@@ -120,10 +120,9 @@ class LastReadingSensor(YvwEntity, SensorEntity):
 class SessionStatusSensor(YvwEntity, SensorEntity):
     """Whether the portal session is usable, and the story around it.
 
-    The keep-alive sensor says when the portal was last touched. This says
-    whether the sign-in behind it still works — when it was established, how old
-    it is, and when it lapsed if it has. Losing a session needs a person and an
-    SMS code, so it is worth being able to see at a glance rather than inferring
+    Whether the sign-in still works — when it was established, how old it is,
+    and when it lapsed if it has. Losing a session needs a person and an SMS
+    code, so it is worth being able to see at a glance rather than inferring it
     from readings that stopped.
     """
 
@@ -133,6 +132,18 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
     def __init__(self, coordinator: YvwCoordinator) -> None:
         """Initialise the sensor."""
         super().__init__(coordinator, "session_status")
+
+    @property
+    def available(self) -> bool:
+        """Always report, even when the last poll failed.
+
+        A failed poll takes every other entity unavailable with it, which is
+        right: their readings are stale. This one is the opposite. It answers the
+        question a failed poll raises — is the session gone, or was that just the
+        portal? — from state held here rather than from anything the poll
+        returned, so going unavailable hides the one thing worth knowing.
+        """
+        return True
 
     @property
     def native_value(self) -> str:

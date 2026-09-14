@@ -131,6 +131,23 @@ run past midnight into the next day's.
 In the ordinary case that is one or two requests a day, replacing a blind poll
 every twelve hours that could sit half a day behind.
 
+### When a poll fails
+
+The portal is occasionally unreachable — a maintenance window overnight, a
+request that times out. A failure inside the morning window simply means the
+window carries on: the next attempt is ten minutes later, as it would have been
+anyway.
+
+Outside the window, where nothing is owed, a failure is retried after half an
+hour and then at doubling intervals up to two hours. That is not about the
+readings, which are not going anywhere. It is because a failed poll takes the
+sensors unavailable with it, and leaving them that way until tomorrow morning
+over one bad request is a poor way to behave.
+
+The session sensor is the exception: it stays available through a failed poll,
+because whether the session is still good is precisely the question a failure
+raises.
+
 ### Learning when your meter publishes
 
 When readings actually appear is not documented, differs between meters, and is
@@ -296,9 +313,9 @@ possible idle timeout.
 
 While measuring, each ping writes a line to the logbook — "session survived 45
 minutes idle, testing 50 minutes next" — so a run can be followed from the
-Home Assistant interface without reading a log file. A **Last keep-alive**
-sensor records when the portal was last touched, and carries the current
-interval and the measurement so far as attributes.
+Home Assistant interface without reading a log file. When the portal was last
+touched, the current interval and the measurement so far are all attributes of
+the session sensor.
 
 Debug logging additionally records how long each session lasted:
 
@@ -309,8 +326,8 @@ logger:
 ```
 
 Requests are made with browser headers and at slightly irregular intervals, and
-the integration polls for readings only twice a day, so the traffic looks like
-somebody keen on checking their water use rather than a script.
+readings are polled for once a morning in the ordinary case, so the traffic looks
+like somebody keen on checking their water use rather than a script.
 
 ## Including the session in diagnostics
 
@@ -421,7 +438,7 @@ arrangement, in which the safest available option is still a password prompt.
 While on the subject: **could you tell us the session policy?** How long a
 session survives idle, and whether there is a maximum age regardless of
 activity. We currently hold sessions open by touching the portal periodically,
-having measured by experiment that one survives at least 70 minutes idle. If
+having measured by experiment that one survives at least 115 minutes idle. If
 there is a maximum age as well, that approach is pointless past it and customers
 face a verification code roughly once a day — which is precisely the problem an
 OAuth refresh token solves. Either way, knowing the numbers would let this
