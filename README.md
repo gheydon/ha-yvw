@@ -379,30 +379,41 @@ That is worth being clear about, because it changes what the keep-alive is for.
 It is a convenience that saves you sign-ins. It is not what protects your
 readings; noticing promptly and signing back in is.
 
-### A limit we cannot rule out
+### A limit that turned out not to exist
 
-The portal may enforce a maximum session age regardless of activity — a
-session that expires, say, 24 hours after sign-in no matter how recently it was
-used. Nothing observed so far proves this either way: the longest session seen
-alive was four hours old, and every expiry so far has been explained by
-something else.
+The worry this section used to carry was that the portal might expire a session
+at a fixed age regardless of activity — 24 hours after sign-in, say, no matter
+how recently it had been used. If that were true **no keep-alive interval could
+prevent it**, and you would face a verification code roughly once a day.
 
-If such a limit exists, **no keep-alive interval can prevent it**, and the
-honest consequence is that you would be asked for a code roughly once a day.
-Tedious, but it costs nothing in readings: each sign-in backfills whatever was
-missed while the session was gone.
+It is not true, at least nowhere near a day. A session signed in on 30 August
+was still working on 14 September: **14 days and 13 hours old**, held open by
+nothing but hourly keep-alives, never once asked to sign in again.
 
-The integration is instrumented to tell the two apart when it next happens. Both
-the `yvw_auth_failed` event and the stored measurement record the session's
-**age** alongside the idle gap that killed it:
+Two things that does and does not establish:
 
-- expiring at a consistent age regardless of idle time → a hard limit
+- **Age alone does not kill a session.** There is no cap at 24 hours, or at any
+  point inside a fortnight. The keep-alive is doing exactly what it was built
+  to do.
+- **It says nothing about how long a session survives untouched.** Two weeks of
+  age was reached by touching the portal every hour. The idle timeout is a
+  separate question, and the answer there is at least
+  [120 minutes](#keeping-the-session-alive).
+
+So the keep-alive is worth having, and the effort spent on it was not misplaced.
+The 30 day rule below is still what actually protects your history, and still
+the only thing you need to remember.
+
+The instrumentation that settled this stays in place, because the finding is one
+account on one portal and the policy could change. Both the `yvw_auth_failed`
+event and the stored measurement record the session's **age** alongside the idle
+gap that killed it:
+
+- expiring at a consistent age regardless of idle time → a hard limit after all
 - expiring after a long idle gap at any age → an idle timeout
 
-If it does turn out to be a hard limit, chasing a longer keep-alive interval is
-pointless and the effort belongs in making re-authentication quick instead —
-which is the strongest argument yet for
-[an OAuth flow with a refresh token](#yarra-valley-water-could-you-help).
+If yours expires at a suspiciously round age, that is worth
+[telling me about](#do-say-hello).
 
 ## Limits worth knowing
 
@@ -446,14 +457,19 @@ review it, and revoke it — without any third-party software ever seeing a
 password or a verification code. It would be better for you than the present
 arrangement, in which the safest available option is still a password prompt.
 
-While on the subject: **could you tell us the session policy?** How long a
-session survives idle, and whether there is a maximum age regardless of
-activity. We currently hold sessions open by touching the portal periodically,
-having measured by experiment that one survives at least 120 minutes idle. If
-there is a maximum age as well, that approach is pointless past it and customers
-face a verification code roughly once a day — which is precisely the problem an
-OAuth refresh token solves. Either way, knowing the numbers would let this
-integration make far fewer requests than guessing does.
+While on the subject: **could you tell us the session policy?** We hold sessions
+open by touching the portal periodically, and have had to establish the numbers
+by experiment: a session survives at least 120 minutes idle, and one held open
+by hourly contact reached 14 days without complaint. So there is no cap on
+session age at anything like a day, which is the reassuring answer — but it was
+found by running an account for a fortnight and watching, which is a silly way
+to learn something you already know.
+
+Both figures are one account on one portal, and neither is a policy we can rely
+on staying put. If you told us the real idle timeout, this integration would
+touch the portal as rarely as that allows instead of guessing conservatively —
+fewer requests on your servers, not more. And if a maximum age does exist
+further out, knowing it would be better than discovering it the hard way.
 
 **Document two endpoints.** Only two are needed to do something useful:
 
