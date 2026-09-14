@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Sign in to MyAccount",
-        "description": "Enter your Yarra Valley Water MyAccount details. They are used once to sign in and are not stored \u2014 only the resulting session is kept.",
+        "description": "Enter your Yarra Valley Water MyAccount details. They are used once to sign in and are not stored — only the resulting session is kept.",
         "data": {
           "username": "Email address",
           "password": "Password"
@@ -75,6 +75,9 @@
           "active": "Active",
           "expired": "Expired"
         }
+      },
+      "catchup_start": {
+        "name": "Looking for readings from"
       }
     }
   },
@@ -99,7 +102,7 @@
           "probe_step_minutes": "How much longer each measurement waits than the last one that survived. Larger steps reach an answer sooner but bracket it more loosely.",
           "include_session_in_diagnostics": "Puts your live sign-in into the diagnostics download in the clear, so anyone who reads that file can use your account until the session lapses. Leave off unless someone is helping you debug, and never post such a file publicly.",
           "catchup_hours": "How long to keep looking each day before giving up until tomorrow. A meter that reported only part of a day is not going to finish it, and without a stopping point it would be asked every ten minutes until midnight.",
-          "adaptive_start": "Adjusts the start time by half an hour a day based on how each morning goes: earlier when the readings are already waiting on the first attempt, later when it spends more than an hour finding them. Worth leaving on \u2014 when readings appear differs between meters and drifts later as more are rolled out."
+          "adaptive_start": "Adjusts the start time by half an hour a day based on how each morning goes: earlier when the readings are already waiting on the first attempt, later when it spends more than an hour finding them. Worth leaving on — when readings appear differs between meters and drifts later as more are rolled out."
         }
       }
     }

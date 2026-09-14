@@ -1155,3 +1155,71 @@ async def test_a_morning_home_assistant_slept_through_teaches_nothing(
 ) -> None:
     """Nothing was looking when the window opened, so the elapsed time is idle."""
     assert await _learn_at(hass, 6, started=5) is None
+
+
+async def test_the_start_time_is_an_entity_not_just_a_dialog(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """It moves on its own, so it is worth seeing without opening the options."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_SID: "session",
+            CONF_ACCOUNT_ID: ACCOUNT,
+            CONF_METER_SERIAL: METER,
+            CONF_ADDRESS: ADDRESS,
+        },
+        unique_id=ACCOUNT,
+        options={CONF_CATCHUP_FROM_HOUR: 3},
+    )
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.yvw.YvwApi", return_value=StubApi(hourly(24))):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    looking = hass.states.get(
+        "sensor.1_example_st_suburb_vic_3000_looking_for_readings_from"
+    )
+    assert looking is not None
+    assert looking.state == "03:00"
+    assert looking.attributes["learned"] is False
+    assert looking.attributes["configured_from_hour"] == 3
+    assert looking.attributes["next_window"]
+
+
+async def test_the_start_time_entity_shows_what_was_learned(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """The learned time is the one actually in use, so it is the one shown."""
+    from custom_components.yvw.schedule_store import ScheduleStore
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_SID: "session",
+            CONF_ACCOUNT_ID: ACCOUNT,
+            CONF_METER_SERIAL: METER,
+            CONF_ADDRESS: ADDRESS,
+        },
+        unique_id=ACCOUNT,
+        options={CONF_CATCHUP_FROM_HOUR: 1},
+    )
+    entry.add_to_hass(hass)
+    await schedule.async_record(entry.entry_id, 150, timedelta(hours=2), date(2026, 9, 13))
+
+    with (
+        patch("custom_components.yvw.YvwApi", return_value=StubApi(hourly(24))),
+        patch("custom_components.yvw.ScheduleStore", return_value=schedule),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    looking = hass.states.get(
+        "sensor.1_example_st_suburb_vic_3000_looking_for_readings_from"
+    )
+    assert looking.state == "03:00"
+    assert looking.attributes["learned"] is True
+    assert looking.attributes["last_moved_on"] == "2026-09-13"

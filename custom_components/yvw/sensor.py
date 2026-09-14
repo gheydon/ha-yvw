@@ -36,6 +36,7 @@ async def async_setup_entry(
             LastFullDayUsageSensor(coordinator),
             LastReadingSensor(coordinator),
             SessionStatusSensor(coordinator),
+            CatchupStartSensor(coordinator),
         ]
     )
 
@@ -182,4 +183,43 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
             ),
             "keepalive_interval": str(coordinator.keepalive_interval),
             "next_poll": str(coordinator.update_interval),
+        }
+
+
+class CatchupStartSensor(YvwEntity, SensorEntity):
+    """The time each morning's look for yesterday's readings begins.
+
+    Normally this is learned rather than configured, and it moves on its own as
+    the meter's publishing time drifts. That makes it worth seeing without
+    opening the options dialog: readings arriving late, or a morning of wasted
+    attempts, are both answered by where this got to.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: YvwCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "catchup_start")
+
+    @property
+    def available(self) -> bool:
+        """Always report: this is the schedule, not anything a poll returned."""
+        return True
+
+    @property
+    def native_value(self) -> str:
+        """Return the time the look begins, as a clock a person reads."""
+        return self.coordinator.looking_from
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
+        """Return where that time came from, and when it last moved."""
+        learned = self.coordinator.learned_start
+        return {
+            "learned": learned is not None,
+            "learning": self.coordinator.learning_start,
+            "last_moved_on": learned.learned_on if learned else None,
+            "configured_from_hour": self.coordinator.catchup_from_hour,
+            "hours_to_look": self.coordinator.catchup_hours,
+            "next_window": self.coordinator.next_window.isoformat(),
         }

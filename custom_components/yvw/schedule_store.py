@@ -35,6 +35,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def clock(minutes: int) -> str:
+    """Describe minutes after midnight in a form a person reads."""
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 @dataclass(slots=True)
 class LearnedStart:
     """When to start looking, as learned from how the last few days went."""
@@ -48,7 +53,7 @@ class LearnedStart:
     @property
     def clock(self) -> str:
         """Describe the time in a form a person reads."""
-        return f"{self.minutes // 60:02d}:{self.minutes % 60:02d}"
+        return clock(self.minutes)
 
 
 def adjust(minutes: int, took: timedelta) -> int:

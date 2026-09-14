@@ -173,8 +173,10 @@ later than 10am — past either, something other than the schedule is wrong, and
 chasing it would only hide that. Only the first find of each day counts, so a
 restart or an extra poll does not drag the time around.
 
-The learned time is shown under **Configure**, below the settings, and in the
-diagnostics download. Turning
+The learned time is shown by the **Looking for readings from** sensor, under
+**Configure**, and in the diagnostics download. The sensor carries whether the
+time was learned or configured, when it last moved, and when the next window
+opens. Turning
 learning off pins the start back to the hour you set; what was learned is set
 aside rather than discarded, and is picked up again if you turn it back on.
 
@@ -201,6 +203,7 @@ that dashboard — the portal's own billing figures are not used.
 | Last full day usage | Litres across the most recent complete day |
 | Last reading | When the meter last reported, which is the end of the hour it covers |
 | Session | Whether the sign-in still works: `active` or `expired` |
+| Looking for readings from | The time each morning's look begins, learned or configured |
 
 The keep-alive has no sensor of its own — when it last ran is an attribute of
 the session sensor, which is the thing it exists to protect.

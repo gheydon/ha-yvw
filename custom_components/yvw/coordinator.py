@@ -51,7 +51,7 @@ from .const import (
 )
 from .exceptions import YvwAuthError, YvwError
 from .probe import ProbeState, ProbeStore
-from .schedule_store import LearnedStart, ScheduleStore
+from .schedule_store import LearnedStart, ScheduleStore, clock
 from .statistics import async_insert_statistics, statistic_id_for
 
 _LOGGER = logging.getLogger(__name__)
@@ -236,6 +236,17 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         if learned is not None:
             return learned.minutes
         return self.catchup_from_hour * 60
+
+    @property
+    def looking_from(self) -> str:
+        """Return the time the daily look begins, learned or configured."""
+        return clock(self.catchup_from_minutes)
+
+    @property
+    def next_window(self) -> datetime:
+        """Return when the look for readings next begins."""
+        now = datetime.now(self._portal_tz)
+        return now + self._next_window(now)
 
     @property
     def catchup_from_hour(self) -> int:
