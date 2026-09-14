@@ -112,6 +112,18 @@ async def async_get_config_entry_diagnostics(
             "app": aura.context.get("app") if aura else None,
             "token": _token_claims(aura.token) if aura else None,
         },
+        "schedule": {
+            "looking_from": coordinator.learned_start.clock
+            if coordinator.learned_start
+            else f"{coordinator.catchup_from_hour:02d}:00",
+            "learned": coordinator.learned_start is not None,
+            "learning": coordinator.learning_start,
+            "last_moved_on": coordinator.learned_start.learned_on
+            if coordinator.learned_start
+            else None,
+            "configured_from_hour": coordinator.catchup_from_hour,
+            "hours_to_look": coordinator.catchup_hours,
+        },
         "readings": {
             "latest_hour": (
                 coordinator.data.latest.start.isoformat()

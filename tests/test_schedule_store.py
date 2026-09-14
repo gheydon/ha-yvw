@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.yvw.const import ADAPTIVE_LATEST_MINUTES
+from custom_components.yvw.const import ADAPTIVE_LATEST_MINUTES, CATCHUP_RETRY
 from custom_components.yvw.schedule_store import ScheduleStore, adjust
 
 TWO_AM = 2 * 60
@@ -20,6 +21,23 @@ TWO_AM = 2 * 60
 def test_readings_already_waiting_move_the_start_earlier() -> None:
     """Found on the first attempt says nothing about how long they had been there."""
     assert adjust(TWO_AM, timedelta(0)) == TWO_AM - 30
+
+
+@pytest.mark.parametrize("seconds", [0.3, 2, 30])
+def test_the_first_attempt_is_recognised_by_its_own_round_trip(seconds: float) -> None:
+    """How long it took is measured when the request returns, not when it left.
+
+    So a successful first attempt never reports nought — it reports its own round
+    trip. Testing against nought exactly made the whole step-earlier rule dead
+    code: every real morning fell through to "leave it alone" and the start never
+    moved from wherever it was configured.
+    """
+    assert adjust(TWO_AM, timedelta(seconds=seconds)) == TWO_AM - 30
+
+
+def test_a_second_attempt_is_not_a_first_one() -> None:
+    """Past the retry cadence, another attempt has been made and come back empty."""
+    assert adjust(TWO_AM, CATCHUP_RETRY + timedelta(minutes=1)) == TWO_AM
 
 
 def test_a_long_hunt_moves_the_start_later() -> None:
@@ -78,8 +96,10 @@ async def test_it_walks_towards_the_hour_readings_appear(hass: HomeAssistant) ->
         start = store.get("entry").minutes if store.get("entry") else minutes
         # Found immediately if the readings were already there, otherwise after
         # however long it takes for them to appear.
-        took = timedelta(0) if start >= published_at else timedelta(
-            minutes=published_at - start
+        took = (
+            timedelta(seconds=1.5)
+            if start >= published_at
+            else timedelta(minutes=published_at - start)
         )
         await store.async_record("entry", start, took, date(2026, 9, day))
 

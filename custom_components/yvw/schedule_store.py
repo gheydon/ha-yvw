@@ -6,7 +6,7 @@ they belong to takes longer, so a time that is right today drifts later over
 months. Asking each person to find their own hour and revisit it is not a good
 answer.
 
-So the start steers itself. Finding the readings on the very first attempt means
+So the start steers itself. Finding the readings on the first attempt means
 they were already waiting and the looking could have begun earlier; taking more
 than an hour of attempts means it began too early and spent the difference on
 requests that found nothing. Anything in between is the intended state and is
@@ -27,6 +27,7 @@ from .const import (
     ADAPTIVE_LATEST_MINUTES,
     ADAPTIVE_STEP,
     ADAPTIVE_TARGET_MAX,
+    CATCHUP_RETRY,
     SCHEDULE_STORAGE_KEY,
     STORAGE_VERSION,
 )
@@ -53,10 +54,15 @@ class LearnedStart:
 def adjust(minutes: int, took: timedelta) -> int:
     """Return where to start looking tomorrow, given how today went.
 
-    ``took`` is how long after the window opened the readings were found.
+    ``took`` is how long after the window opened the readings were found, and it
+    is measured when the request comes back rather than when it went out. So the
+    first attempt does not report nought: it reports its own round trip, a
+    fraction of a second on a good night. What identifies it is that no second
+    attempt has happened yet, which makes the retry cadence the threshold.
     """
-    if took <= timedelta(0):
-        # Already waiting when the looking began, so it can begin earlier.
+    if took < CATCHUP_RETRY:
+        # Found on the first attempt: already waiting when the looking began,
+        # for an unknown length of time, so it can begin earlier.
         moved = minutes - int(ADAPTIVE_STEP.total_seconds() // 60)
     elif took > ADAPTIVE_TARGET_MAX:
         # A long run of empty attempts: it began before there was anything.

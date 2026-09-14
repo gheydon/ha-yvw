@@ -158,8 +158,8 @@ are likely to land. An hour chosen today is the wrong hour eventually.
 So the start time steers itself. **Learn when readings appear** is on by
 default, and after each successful morning it moves the start by half an hour:
 
-- **found on the very first attempt** — they were already waiting, and had been
-  for an unknown length of time. Start half an hour earlier tomorrow.
+- **found on the first attempt** — they were already waiting, and had been for
+  an unknown length of time. Start half an hour earlier tomorrow.
 - **found after more than an hour of looking** — that is an hour of requests
   finding nothing. Start half an hour later tomorrow.
 - **anything in between** — this is the intended state. Leave it alone.
@@ -170,7 +170,8 @@ later than 10am — past either, something other than the schedule is wrong, and
 chasing it would only hide that. Only the first find of each day counts, so a
 restart or an extra poll does not drag the time around.
 
-The learned time is shown under **Configure**, below the settings. Turning
+The learned time is shown under **Configure**, below the settings, and in the
+diagnostics download. Turning
 learning off pins the start back to the hour you set; what was learned is set
 aside rather than discarded, and is picked up again if you turn it back on.
 

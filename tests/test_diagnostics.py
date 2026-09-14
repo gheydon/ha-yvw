@@ -109,3 +109,23 @@ async def test_the_account_details_are_redacted_either_way(
 
     assert result["entry"]["data"][CONF_ADDRESS] == "**REDACTED**"
     assert result["entry"]["data"][CONF_METER_SERIAL] == "**REDACTED**"
+
+
+async def test_the_schedule_says_when_it_is_looking(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """The start now moves on its own, so the file has to say where it got to.
+
+    Without it the only way to find out is to read .storage from a shell, which
+    is no use to somebody attaching a download to an issue — and the schedule is
+    the first thing to check when readings arrive late or not at all.
+    """
+    entry = await _setup(hass)
+
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    schedule = result["schedule"]
+    assert schedule["looking_from"] == "04:00"
+    assert schedule["learned"] is False
+    assert schedule["learning"] is True
+    assert schedule["hours_to_look"] == 6
