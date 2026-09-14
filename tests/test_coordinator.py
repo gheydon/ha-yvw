@@ -848,8 +848,14 @@ async def test_only_the_first_find_of_the_day_teaches(
 
     schedule.async_record = counted
 
-    await coordinator._async_learn_from(YvwData(yesterday_complete=True))
-    await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+    # Inside a window that nothing interrupted, which is the only time a
+    # morning counts as a measurement at all.
+    moment = datetime(2026, 8, 30, 5, 0, tzinfo=MELBOURNE)
+    coordinator._started_at = moment - timedelta(hours=6)
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+        await coordinator._async_learn_from(YvwData(yesterday_complete=True))
 
     assert len(recorded) == 1
 
@@ -1034,3 +1040,118 @@ async def test_the_session_sensor_still_reports_when_a_poll_fails(
     session = hass.states.get("sensor.1_example_st_suburb_vic_3000_session")
     assert session is not None
     assert session.state == "active"
+
+
+# --- Evidence from ordinary running -----------------------------------------
+
+
+async def test_an_ordinary_keepalive_records_the_gap_it_survived(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Every ping that comes back proves the session lasted that long.
+
+    Keeping that only while calibrating threw the evidence away: the options
+    screen reported twenty-five minutes while the session was clearing an hour
+    every hour, and answering "how long does a session last" meant running a
+    measurement that costs a verification code.
+    """
+    probe = ProbeStore(hass)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 60})
+    coordinator._probe = probe
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=61)
+
+    assert coordinator.calibrating is False
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert probe.get(coordinator.config_entry.entry_id).survived_minutes == 61
+
+
+async def test_a_shorter_gap_does_not_lower_the_best(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The figure is the longest gap proven, not the most recent one."""
+    probe = ProbeStore(hass)
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 10})
+    coordinator._probe = probe
+    await probe.async_record_survived(coordinator.config_entry.entry_id, 120)
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=11)
+
+    await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    assert probe.get(coordinator.config_entry.entry_id).survived_minutes == 120
+
+
+async def test_an_ordinary_keepalive_stays_out_of_the_logbook(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Recording it is not a reason to narrate it; only a run being watched is."""
+    coordinator = build_coordinator(hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 60})
+    coordinator._probe = ProbeStore(hass)
+    coordinator._last_contact = dt_util.utcnow() - timedelta(minutes=61)
+
+    with patch("custom_components.yvw.coordinator.async_log_entry") as logbook:
+        await coordinator._async_keepalive(datetime.now(MELBOURNE))
+
+    logbook.assert_not_called()
+
+
+# --- Only an undisturbed morning is a measurement ---------------------------
+
+
+async def _learn_at(
+    hass: HomeAssistant, hour: int, *, failed_first: bool = False, started: int = 0
+) -> int | None:
+    """Run a morning and return the start it learned, if it learned one."""
+    from custom_components.yvw.schedule_store import ScheduleStore
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    coordinator = build_coordinator(hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: 3})
+    coordinator._schedule = schedule
+    coordinator._started_at = datetime(2026, 8, 30, started, 0, tzinfo=MELBOURNE)
+
+    moment = datetime(2026, 8, 30, hour, 0, tzinfo=MELBOURNE)
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        if failed_first:
+            coordinator.api = StubApi(error=YvwError("portal timed out"))
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+            coordinator.api = StubApi()
+        await coordinator._async_learn_from(YvwData(yesterday_complete=True))
+
+    learned = schedule.get(coordinator.config_entry.entry_id)
+    return learned.minutes if learned else None
+
+
+async def test_an_undisturbed_morning_is_learned_from(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The ordinary case still teaches it."""
+    assert await _learn_at(hass, 3) == 2 * 60 + 30
+
+
+async def test_a_morning_with_a_failed_poll_teaches_nothing(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """How long it took then measures the outage, not when readings appeared.
+
+    This is what happened on the night the poll timed out: the readings were
+    found hours later by a forced refresh, and that was recorded as the meter
+    publishing late.
+    """
+    assert await _learn_at(hass, 5, failed_first=True) is None
+
+
+async def test_a_find_outside_the_window_teaches_nothing(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """No scheduled attempt is running, so this is somebody forcing a refresh."""
+    assert await _learn_at(hass, 14) is None
+
+
+async def test_a_morning_home_assistant_slept_through_teaches_nothing(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Nothing was looking when the window opened, so the elapsed time is idle."""
+    assert await _learn_at(hass, 6, started=5) is None

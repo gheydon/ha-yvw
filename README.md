@@ -165,7 +165,10 @@ default, and after each successful morning it moves the start by half an hour:
 - **anything in between** — this is the intended state. Leave it alone.
 
 Over a few mornings it walks to just before publication and settles there, then
-follows if publication drifts later. It will not move earlier than midnight, or
+follows if publication drifts later. Only an undisturbed morning teaches it
+anything: a poll that failed, a window Home Assistant slept through, or readings
+turning up outside the window because somebody forced a refresh all measure the
+interruption rather than the meter, so they are ignored. It will not move earlier than midnight, or
 later than 10am — past either, something other than the schedule is wrong, and
 chasing it would only hide that. Only the first find of each day counts, so a
 restart or an extra poll does not drag the time around.
@@ -299,8 +302,12 @@ until the readings quietly stop, which is worth knowing about promptly. If the
 portal has not been touched in well over the interval, that is reported as a
 `stalled` outcome and the keep-alive is restarted.
 
-How long a session survives untouched is not published, so the integration can
-measure it. Turn on **Find the session timeout** under **Configure** and each
+Every keep-alive that comes back proves the session survived that gap, so the
+longest one seen is recorded as it goes and shown under **Configure**. That
+costs nothing and needs no measurement run.
+
+What ordinary running cannot show is where the limit actually falls, since it
+only ever proves the gaps it happens to use. Turn on **Find the session timeout** under **Configure** and each
 keep-alive waits a little longer than the last gap the session came back from,
 climbing until one finally lapses. That brackets the real limit — "timed out
 between 40 and 45 minutes idle" — and it then sets the interval to sit safely

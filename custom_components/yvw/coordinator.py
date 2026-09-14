@@ -113,6 +113,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         # are still owed: stale data claims yesterday is complete all day.
         self._complete_for: date | None = None
         self._failures = 0
+        # A morning is only a measurement of when readings appear if nothing
+        # interrupted the attempts. These say when this started running, and
+        # the last day something did.
+        self._started_at = datetime.now(self._portal_tz)
+        self._disrupted_on: date | None = None
         self._cancel_keepalive: Callable[[], None] | None = None
         self._session_started: datetime | None = None
         self._last_contact: datetime | None = None
@@ -431,10 +436,21 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 reschedule = KEEPALIVE_RETRY
                 return
 
-            if self.calibrating:
-                await self._probe.async_record_survived(
-                    self.config_entry.entry_id, idle_minutes
+            # Every ping that comes back proves the session survived that gap,
+            # whether or not anyone asked for a measurement. Keeping it only
+            # while calibrating threw the evidence away: the options screen
+            # reported twenty-five minutes while the session was clearing an
+            # hour every hour, and answering how long a session lasts meant
+            # running a measurement that ends by costing a verification code.
+            proved = await self._probe.async_record_survived(
+                self.config_entry.entry_id, idle_minutes
+            )
+            if proved and not self.calibrating:
+                _LOGGER.debug(
+                    "Session has now survived %s minutes idle untouched", idle_minutes
                 )
+
+            if self.calibrating:
                 next_minutes = round(self.keepalive_interval.total_seconds() / 60)
                 _LOGGER.info(
                     "Session survived %s minutes idle; next test %s minutes",
@@ -527,6 +543,9 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             raise
         except Exception:
             self._failures += 1
+            now = datetime.now(self._portal_tz)
+            if self._in_window(now):
+                self._disrupted_on = now.date()
             self.update_interval = self._after_failure()
             _LOGGER.debug(
                 "Poll failed (%s in a row); looking again in %s",
@@ -598,13 +617,11 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         now = datetime.now(self._portal_tz)
         if not data.yesterday_complete or self._found_on == now.date():
             return
+        if not self._in_window(now) or self._morning_was_interrupted(now):
+            return
         self._found_on = now.date()
 
         took = now - self._morning(now)
-        if took < timedelta(0):
-            # Found before the window even opened, which is not a measurement
-            # of anything: a restart or a manual reload rather than a morning.
-            return
 
         learned = await self._schedule.async_record(
             self.config_entry.entry_id,
@@ -617,6 +634,18 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             took,
             learned.clock,
         )
+
+    def _morning_was_interrupted(self, now: datetime) -> bool:
+        """Return whether anything stopped today's attempts running as intended.
+
+        How long the readings took to find only measures when they appeared if
+        the attempts actually ran on cadence from the moment the window opened.
+        A poll that failed, or a Home Assistant that was not running, breaks
+        that: the elapsed time then measures the interruption instead. Learning
+        from it moves the start for the wrong reason — a night the portal timed
+        out taught this that the meter had begun publishing hours later.
+        """
+        return self._disrupted_on == now.date() or self._started_at > self._morning(now)
 
     def _next_poll(self, data: YvwData) -> timedelta:
         """Return how long to wait before looking for readings again.
