@@ -160,7 +160,7 @@ HOURS_IN_A_DAY = 24
 UPDATE_INTERVAL = timedelta(hours=12)
 
 # The session expires server-side on idle, not in the browser. Measured against
-# the real portal, a session survived a 115 minute idle gap without complaint,
+# the real portal, a session survived a 120 minute idle gap without complaint,
 # so an hour is the default: comfortably inside what is proven, and a sixth of
 # the requests the original ten minute guess made. Losing a session costs the
 # user an SMS code, so the margin is deliberate.

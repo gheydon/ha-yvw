@@ -288,7 +288,7 @@ the portal periodically to stop it going idle. If the session lapses anyway, a
 repair appears under **Settings → System → Repairs** asking you to sign in
 again; nothing is recorded as zero usage in the meantime.
 
-A session has been measured surviving a **115 minute** idle gap against the real
+A session has been measured surviving a **120 minute** idle gap against the real
 portal without complaint, so the default is to touch it every hour: comfortably
 inside what is proven, at a sixth of the requests the original guess made.
 
@@ -439,7 +439,7 @@ arrangement, in which the safest available option is still a password prompt.
 While on the subject: **could you tell us the session policy?** How long a
 session survives idle, and whether there is a maximum age regardless of
 activity. We currently hold sessions open by touching the portal periodically,
-having measured by experiment that one survives at least 115 minutes idle. If
+having measured by experiment that one survives at least 120 minutes idle. If
 there is a maximum age as well, that approach is pointless past it and customers
 face a verification code roughly once a day — which is precisely the problem an
 OAuth refresh token solves. Either way, knowing the numbers would let this
