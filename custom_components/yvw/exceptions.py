@@ -37,9 +37,5 @@ def cannot_connect(err: BaseException) -> YvwCannotConnect:
     """
     reason = str(err)
     if not reason:
-        reason = (
-            "the request timed out"
-            if isinstance(err, TimeoutError)
-            else type(err).__name__
-        )
+        reason = "the request timed out" if isinstance(err, TimeoutError) else type(err).__name__
     return YvwCannotConnect(f"Could not reach the YVW portal: {reason}")

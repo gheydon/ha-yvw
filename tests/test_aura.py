@@ -72,9 +72,7 @@ def test_the_anti_hijacking_prefix_is_stripped() -> None:
 
 
 def test_an_error_wrapper_is_stripped() -> None:
-    assert parse_aura_body('*/{"exceptionMessage":"nope"}/*ERROR*/') == {
-        "exceptionMessage": "nope"
-    }
+    assert parse_aura_body('*/{"exceptionMessage":"nope"}/*ERROR*/') == {"exceptionMessage": "nope"}
 
 
 def test_an_expired_session_is_reported_as_an_auth_failure() -> None:
@@ -288,9 +286,7 @@ async def test_an_ordinary_apex_error_does_not_reload_the_page() -> None:
 
 async def test_a_stale_context_is_refreshed_and_retried() -> None:
     """A framework version that has moved on is cured by reloading."""
-    client = _client_with_context(
-        [YvwApiError("clientOutOfSync: refresh the page"), {"ok": True}]
-    )
+    client = _client_with_context([YvwApiError("clientOutOfSync: refresh the page"), {"ok": True}])
     reloaded: list[bool] = []
 
     async def refresh():
@@ -308,9 +304,7 @@ async def test_a_bounced_reload_falls_back_to_the_context_in_hand() -> None:
     The endpoint often still accepts the context already held, and reporting an
     expiry here sends the user through an SMS code for nothing.
     """
-    client = _client_with_context(
-        [YvwApiError("clientOutOfSync"), {"ok": True}]
-    )
+    client = _client_with_context([YvwApiError("clientOutOfSync"), {"ok": True}])
 
     async def refresh():
         raise YvwAuthError("Session expired: the portal keeps redirecting")

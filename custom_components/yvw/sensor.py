@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfVolume
+from homeassistant.const import EntityCategory, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -168,18 +168,12 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
             "hours_in_state": int(in_state.total_seconds() // 3600),
             "signed_in_at": signed_in.isoformat() if signed_in else None,
             "session_age": str(age).split(".")[0] if age else None,
-            "expired_at": (
-                coordinator.expired_at.isoformat() if coordinator.expired_at else None
-            ),
+            "expired_at": (coordinator.expired_at.isoformat() if coordinator.expired_at else None),
             "last_contact": (
-                coordinator.last_contact.isoformat()
-                if coordinator.last_contact
-                else None
+                coordinator.last_contact.isoformat() if coordinator.last_contact else None
             ),
             "last_keepalive": (
-                coordinator.last_keepalive.isoformat()
-                if coordinator.last_keepalive
-                else None
+                coordinator.last_keepalive.isoformat() if coordinator.last_keepalive else None
             ),
             "keepalive_interval": str(coordinator.keepalive_interval),
             "next_poll": str(coordinator.update_interval),
@@ -196,6 +190,9 @@ class CatchupStartSensor(YvwEntity, SensorEntity):
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_suggested_display_precision = 2
 
     def __init__(self, coordinator: YvwCoordinator) -> None:
         """Initialise the sensor."""
@@ -207,15 +204,22 @@ class CatchupStartSensor(YvwEntity, SensorEntity):
         return True
 
     @property
-    def native_value(self) -> str:
-        """Return the time the look begins, as a clock a person reads."""
-        return self.coordinator.looking_from
+    def native_value(self) -> float:
+        """Return the time the look begins, in hours after midnight.
+
+        A number rather than a clock face, because the point of this sensor is
+        the trend: it moves half an hour at a time and what matters is which way
+        and how far it has got. A graph of "02:30" cannot show that, so the
+        clock reading lives in an attribute instead.
+        """
+        return round(self.coordinator.catchup_from_minutes / 60, 4)
 
     @property
     def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
         """Return where that time came from, and when it last moved."""
         learned = self.coordinator.learned_start
         return {
+            "clock": self.coordinator.looking_from,
             "learned": learned is not None,
             "learning": self.coordinator.learning_start,
             "last_moved_on": learned.learned_on if learned else None,

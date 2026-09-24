@@ -56,9 +56,13 @@ async def _setup(hass: HomeAssistant, options: dict | None = None) -> MockConfig
     api.async_raw_cache.return_value = "1234567890"
     api.async_raw_account.return_value = {"accountSearchResponse": [{"accountId": "x"}]}
     api.async_probe_session_time.return_value = None
-    header = base64.urlsafe_b64encode(
-        json.dumps({"typ": "JWT", "alg": "HS256", "iat": 1, "exp": 0}).encode()
-    ).decode().rstrip("=")
+    header = (
+        base64.urlsafe_b64encode(
+            json.dumps({"typ": "JWT", "alg": "HS256", "iat": 1, "exp": 0}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
     api.client = MagicMock()
     api.client.aura = AuraContext(
         context={"fwuid": "FW1", "app": "siteforce:communityApp"},

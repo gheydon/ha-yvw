@@ -79,9 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
         portal_tz=portal_tz,
         probe=probe,
         schedule=schedule,
-        signed_in_at=dt_util.parse_datetime(
-            entry.data.get(CONF_SIGNED_IN_AT) or ""
-        ),
+        signed_in_at=dt_util.parse_datetime(entry.data.get(CONF_SIGNED_IN_AT) or ""),
     )
 
     await coordinator.async_config_entry_first_refresh()

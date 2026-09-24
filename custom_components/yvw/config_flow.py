@@ -115,9 +115,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         self._site: AccountInfo | None = None
         self._code_error: str | None = None
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Collect the portal credentials."""
         errors: dict[str, str] = {}
 
@@ -141,13 +139,9 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                     return await self._async_finish()
                 return await self.async_step_mfa()
 
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
 
-    async def async_step_mfa(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_mfa(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Collect the verification code the portal sent by SMS."""
         errors: dict[str, str] = {}
 
@@ -186,9 +180,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_reauth(
-        self, entry_data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
         """Handle a session that has expired."""
         return await self.async_step_reauth_confirm()
 
@@ -197,9 +189,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Ask the user to sign in again."""
         if user_input is None:
-            return self.async_show_form(
-                step_id="reauth_confirm", data_schema=STEP_USER_SCHEMA
-            )
+            return self.async_show_form(step_id="reauth_confirm", data_schema=STEP_USER_SCHEMA)
         return await self.async_step_user(user_input)
 
     async def _async_finish(self) -> ConfigFlowResult:
@@ -238,9 +228,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             account_id = "".join(
-                character
-                for character in user_input[CONF_ACCOUNT_ID]
-                if character.isdigit()
+                character for character in user_input[CONF_ACCOUNT_ID] if character.isdigit()
             )
             if not account_id:
                 errors[CONF_ACCOUNT_ID] = "invalid_account"
@@ -260,18 +248,14 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_site(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_site(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask which property to follow."""
         if user_input is not None:
             return await self._async_store(user_input[CONF_ACCOUNT_ID])
 
         # Current accounts first: a closed one has no meter still reporting.
         ordered = sorted(self._summaries, key=lambda site: not site.active)
-        options = [
-            SelectOptionDict(value=site.account_id, label=site.label) for site in ordered
-        ]
+        options = [SelectOptionDict(value=site.account_id, label=site.label) for site in ordered]
         schema = vol.Schema(
             {
                 vol.Required(CONF_ACCOUNT_ID, default=options[0]["value"]): SelectSelector(
@@ -309,9 +293,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         if self.source == "reauth":
             # Replace the dead session in place rather than creating a duplicate.
             self._abort_if_unique_id_mismatch(reason="wrong_account")
-            return self.async_update_reload_and_abort(
-                self._get_reauth_entry(), data_updates=data
-            )
+            return self.async_update_reload_and_abort(self._get_reauth_entry(), data_updates=data)
 
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=site.address, data=data)
@@ -370,9 +352,7 @@ class YvwOptionsFlow(OptionsFlow):
     found by experiment, so it is an option rather than a constant.
     """
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         options = self.config_entry.options
 
@@ -395,13 +375,9 @@ class YvwOptionsFlow(OptionsFlow):
                 # handling follows, and the diagnostics switch last.
                 vol.Required(
                     CONF_CATCHUP_FROM_HOUR,
-                    default=options.get(
-                        CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
-                    ),
+                    default=options.get(CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR),
                 ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0, max=23, step=1, mode=NumberSelectorMode.BOX
-                    )
+                    NumberSelectorConfig(min=0, max=23, step=1, mode=NumberSelectorMode.BOX)
                 ),
                 vol.Required(
                     CONF_CATCHUP_HOURS,

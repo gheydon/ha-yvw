@@ -98,9 +98,7 @@ class YvwApi:
         This is the call the portal's own account switcher makes, so it answers
         without needing an account number to start from.
         """
-        value = await self._client.async_invoke_apex(
-            APEX_ACCOUNTS_CLASS, APEX_ACCOUNTS_METHOD, {}
-        )
+        value = await self._client.async_invoke_apex(APEX_ACCOUNTS_CLASS, APEX_ACCOUNTS_METHOD, {})
         rows = (value or {}).get("data") or []
         meta = (value or {}).get("meta") or {}
 
@@ -139,8 +137,12 @@ class YvwApi:
         requests, and it holds either a bare account id or a JSON blob.
         """
         sources = (
-            ("cached session payload", APEX_CACHE_CLASS, APEX_CACHE_METHOD,
-             {"key": APEX_CACHE_KEY}),
+            (
+                "cached session payload",
+                APEX_CACHE_CLASS,
+                APEX_CACHE_METHOD,
+                {"key": APEX_CACHE_KEY},
+            ),
             ("account balance", APEX_BALANCE_CLASS, APEX_BALANCE_METHOD, {}),
         )
 

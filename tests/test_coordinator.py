@@ -102,14 +102,11 @@ def build_coordinator(
 def hourly(count: int, litres: float = 10.0) -> list[UsageReading]:
     start = datetime(2026, 8, 20, 0, 0, tzinfo=MELBOURNE)
     return [
-        UsageReading(start=start + timedelta(hours=index), litres=litres)
-        for index in range(count)
+        UsageReading(start=start + timedelta(hours=index), litres=litres) for index in range(count)
     ]
 
 
-async def test_new_readings_fire_an_event(
-    recorder_mock: Recorder, hass: HomeAssistant
-) -> None:
+async def test_new_readings_fire_an_event(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     """Automations need a trigger for freshly recorded consumption."""
     events: list[Event] = []
     hass.bus.async_listen(EVENT_NEW_READINGS, events.append)
@@ -129,9 +126,7 @@ async def test_new_readings_fire_an_event(
     assert data["last_hour"] == "2026-08-20T02:00:00+10:00"
 
 
-async def test_no_event_when_nothing_is_new(
-    recorder_mock: Recorder, hass: HomeAssistant
-) -> None:
+async def test_no_event_when_nothing_is_new(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     """Every poll re-reads 30 days, so most polls add nothing."""
     events: list[Event] = []
     coordinator = build_coordinator(hass, StubApi(hourly(2)))
@@ -158,9 +153,7 @@ async def test_a_dead_session_asks_for_reauthentication(
     assert coordinator.keepalive_running is False
 
 
-async def test_a_dead_session_fires_an_event(
-    recorder_mock: Recorder, hass: HomeAssistant
-) -> None:
+async def test_a_dead_session_fires_an_event(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     """Recovering needs a person and an SMS code, so it is worth notifying."""
     events: list[Event] = []
     hass.bus.async_listen(EVENT_AUTH_FAILED, events.append)
@@ -277,9 +270,7 @@ def test_a_concluded_measurement_stops_calibrating(hass: HomeAssistant) -> None:
 
 def test_the_finding_brackets_the_timeout() -> None:
     """The answer is a range: the longest survived and the gap that failed."""
-    state = ProbeState(
-        survived_minutes=40, failed_minutes=45, failed_session_age_minutes=300
-    )
+    state = ProbeState(survived_minutes=40, failed_minutes=45, failed_session_age_minutes=300)
 
     assert state.concluded is True
     assert "between 40 and 45" in state.summary
@@ -645,14 +636,13 @@ def test_calibration_may_climb_past_what_anyone_can_configure(
     testing gaps longer than anyone would sensibly run.
     """
     coordinator = build_coordinator(
-        hass, StubApi(), {CONF_KEEPALIVE_MINUTES: 60, CONF_PROBE_ENABLED: True,
-                          CONF_PROBE_STEP_MINUTES: 15}
+        hass,
+        StubApi(),
+        {CONF_KEEPALIVE_MINUTES: 60, CONF_PROBE_ENABLED: True, CONF_PROBE_STEP_MINUTES: 15},
     )
     coordinator.probe_state.survived_minutes = MAX_KEEPALIVE_MINUTES
 
-    assert coordinator.keepalive_interval == timedelta(
-        minutes=MAX_KEEPALIVE_MINUTES + 15
-    )
+    assert coordinator.keepalive_interval == timedelta(minutes=MAX_KEEPALIVE_MINUTES + 15)
 
 
 def test_a_configured_interval_is_still_capped(hass: HomeAssistant) -> None:
@@ -667,9 +657,7 @@ def test_a_configured_interval_is_still_capped(hass: HomeAssistant) -> None:
 # --- Aiming the poll at when readings appear --------------------------------
 
 
-def _at(
-    hass: HomeAssistant, hour: int, complete: bool, options: dict | None = None
-) -> timedelta:
+def _at(hass: HomeAssistant, hour: int, complete: bool, options: dict | None = None) -> timedelta:
     """Return the wait chosen at a given hour, for a given state of yesterday."""
     coordinator = build_coordinator(hass, StubApi(), options)
     moment = datetime(2026, 8, 30, hour, 0, tzinfo=MELBOURNE)
@@ -757,12 +745,8 @@ async def test_the_time_in_state_restarts_when_the_session_does(
 
 def test_the_hour_it_starts_looking_can_be_moved(hass: HomeAssistant) -> None:
     """Some meters publish earlier than others, and waiting gains nothing."""
-    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 2}) == (
-        CATCHUP_RETRY
-    )
-    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 6}) == (
-        timedelta(hours=3)
-    )
+    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 2}) == (CATCHUP_RETRY)
+    assert _at(hass, 3, complete=False, options={CONF_CATCHUP_FROM_HOUR: 6}) == (timedelta(hours=3))
 
 
 def test_the_window_stops_at_the_end_of_the_day_it_started(
@@ -781,9 +765,7 @@ def test_how_long_to_keep_looking_can_be_changed(hass: HomeAssistant) -> None:
     # Default is four in the morning for six hours, so ten is too late.
     assert _at(hass, 10, complete=False) == timedelta(hours=18)
     # Given ten hours it is still within the window.
-    assert _at(hass, 10, complete=False, options={CONF_CATCHUP_HOURS: 10}) == (
-        CATCHUP_RETRY
-    )
+    assert _at(hass, 10, complete=False, options={CONF_CATCHUP_HOURS: 10}) == (CATCHUP_RETRY)
 
 
 def test_a_restart_does_not_look_like_a_new_session(hass: HomeAssistant) -> None:
@@ -835,8 +817,15 @@ async def test_only_the_first_find_of_the_day_teaches(
     entry = MockConfigEntry(domain=DOMAIN, unique_id=ACCOUNT, options={})
     entry.add_to_hass(hass)
     coordinator = YvwCoordinator(
-        hass, entry, StubApi(), ACCOUNT, METER, ADDRESS,
-        portal_tz=MELBOURNE, probe=ProbeStore(hass), schedule=schedule,
+        hass,
+        entry,
+        StubApi(),
+        ACCOUNT,
+        METER,
+        ADDRESS,
+        portal_tz=MELBOURNE,
+        probe=ProbeStore(hass),
+        schedule=schedule,
     )
 
     recorded: list[timedelta] = []
@@ -868,13 +857,18 @@ async def test_nothing_is_learned_when_learning_is_off(
 
     schedule = ScheduleStore(hass)
     await schedule.async_load()
-    entry = MockConfigEntry(
-        domain=DOMAIN, unique_id=ACCOUNT, options={CONF_ADAPTIVE_START: False}
-    )
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=ACCOUNT, options={CONF_ADAPTIVE_START: False})
     entry.add_to_hass(hass)
     coordinator = YvwCoordinator(
-        hass, entry, StubApi(), ACCOUNT, METER, ADDRESS,
-        portal_tz=MELBOURNE, probe=ProbeStore(hass), schedule=schedule,
+        hass,
+        entry,
+        StubApi(),
+        ACCOUNT,
+        METER,
+        ADDRESS,
+        portal_tz=MELBOURNE,
+        probe=ProbeStore(hass),
+        schedule=schedule,
     )
 
     await coordinator._async_learn_from(YvwData(yesterday_complete=True))
@@ -928,9 +922,7 @@ async def test_a_failure_outside_the_window_does_not_wait_a_whole_day(
     recorder_mock: Recorder, hass: HomeAssistant
 ) -> None:
     """Nothing is owed, but everything is unavailable until a poll succeeds."""
-    armed = await _fail_at(
-        hass, 12, error=YvwError("portal down"), previous=timedelta(hours=16)
-    )
+    armed = await _fail_at(hass, 12, error=YvwError("portal down"), previous=timedelta(hours=16))
 
     assert armed == FAILURE_RETRY
 
@@ -1178,11 +1170,10 @@ async def test_the_start_time_is_an_entity_not_just_a_dialog(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    looking = hass.states.get(
-        "sensor.1_example_st_suburb_vic_3000_looking_for_readings_from"
-    )
+    looking = hass.states.get("sensor.1_example_st_suburb_vic_3000_looking_for_readings_from")
     assert looking is not None
-    assert looking.state == "03:00"
+    assert looking.state == "3.0"
+    assert looking.attributes["clock"] == "03:00"
     assert looking.attributes["learned"] is False
     assert looking.attributes["configured_from_hour"] == 3
     assert looking.attributes["next_window"]
@@ -1217,9 +1208,50 @@ async def test_the_start_time_entity_shows_what_was_learned(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    looking = hass.states.get(
-        "sensor.1_example_st_suburb_vic_3000_looking_for_readings_from"
-    )
-    assert looking.state == "03:00"
+    looking = hass.states.get("sensor.1_example_st_suburb_vic_3000_looking_for_readings_from")
+    assert looking.state == "3.0"
+    assert looking.attributes["clock"] == "03:00"
     assert looking.attributes["learned"] is True
     assert looking.attributes["last_moved_on"] == "2026-09-13"
+
+
+async def test_the_start_time_is_a_number_so_it_can_be_graphed(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """A clock face cannot be plotted, and the trend is the point of it.
+
+    It moves half an hour at a time; which way, and how far it has got, is what
+    the sensor is for. So the state is hours after midnight and the readable
+    form is an attribute.
+    """
+    from custom_components.yvw.schedule_store import ScheduleStore
+
+    schedule = ScheduleStore(hass)
+    await schedule.async_load()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_SID: "session",
+            CONF_ACCOUNT_ID: ACCOUNT,
+            CONF_METER_SERIAL: METER,
+            CONF_ADDRESS: ADDRESS,
+        },
+        unique_id=ACCOUNT,
+        options={CONF_CATCHUP_FROM_HOUR: 2},
+    )
+    entry.add_to_hass(hass)
+    # Half past midnight, the smallest step above the floor.
+    await schedule.async_record(entry.entry_id, 60, timedelta(seconds=1), date(2026, 9, 23))
+
+    with (
+        patch("custom_components.yvw.YvwApi", return_value=StubApi(hourly(24))),
+        patch("custom_components.yvw.ScheduleStore", return_value=schedule),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    looking = hass.states.get("sensor.1_example_st_suburb_vic_3000_looking_for_readings_from")
+    assert float(looking.state) == 0.5
+    assert looking.attributes["clock"] == "00:30"
+    assert looking.attributes["unit_of_measurement"] == "h"
+    assert looking.attributes["state_class"] == "measurement"

@@ -100,9 +100,7 @@ async def test_replayed_hours_are_not_counted_twice(
     assert [row["sum"] for row in rows] == [10, 30, 60]
 
 
-async def test_nothing_new_is_a_no_op(
-    recorder_mock: Recorder, hass: HomeAssistant
-) -> None:
+async def test_nothing_new_is_a_no_op(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     """A poll that finds no fresh hours must not write anything."""
     start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
     await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10]))
@@ -111,9 +109,7 @@ async def test_nothing_new_is_a_no_op(
     assert await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10])) == []
 
 
-async def test_no_readings_writes_nothing(
-    recorder_mock: Recorder, hass: HomeAssistant
-) -> None:
+async def test_no_readings_writes_nothing(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     """A dead session or an empty window must not touch the statistics."""
     assert await async_insert_statistics(hass, METER, ADDRESS, []) == []
 
@@ -130,18 +126,14 @@ async def test_a_long_gap_is_filled_in_when_the_user_signs_back_in(
     start = datetime(2026, 8, 1, 0, 0, tzinfo=MELBOURNE)
 
     # Two days recorded, then the session lapses and nothing is collected.
-    before = [
-        UsageReading(start=start + timedelta(hours=hour), litres=10.0)
-        for hour in range(48)
-    ]
+    before = [UsageReading(start=start + timedelta(hours=hour), litres=10.0) for hour in range(48)]
     assert len(await async_insert_statistics(hass, METER, ADDRESS, before)) == 48
     await async_wait_recording_done(hass)
 
     # Twenty days later the user signs in again, and the portal hands back the
     # whole window it still holds — including everything missed.
     catch_up = [
-        UsageReading(start=start + timedelta(hours=hour), litres=10.0)
-        for hour in range(24 * 22)
+        UsageReading(start=start + timedelta(hours=hour), litres=10.0) for hour in range(24 * 22)
     ]
     added = await async_insert_statistics(hass, METER, ADDRESS, catch_up)
     await async_wait_recording_done(hass)

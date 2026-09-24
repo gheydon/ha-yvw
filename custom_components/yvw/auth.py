@@ -56,9 +56,7 @@ _ATTR_RE = re.compile(r"""([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))"""
 _FORM_ACTION_RE = re.compile(r"<form\b[^>]*\baction\s*=\s*[\"']([^\"']*)[\"']", re.IGNORECASE)
 
 # The code page splits the six digits across separately named fields.
-_DIGIT_FIELD_RE = re.compile(
-    r"(first|second|third|fourth|fifth|sixth)Hidden", re.IGNORECASE
-)
+_DIGIT_FIELD_RE = re.compile(r"(first|second|third|fourth|fifth|sixth)Hidden", re.IGNORECASE)
 _DIGIT_ORDER = ("first", "second", "third", "fourth", "fifth", "sixth")
 
 # The submit button does not post the form directly. It calls into AJAX4JSF,
@@ -162,8 +160,7 @@ def build_code_form(html: str, code: str) -> dict[str, str]:
     digit_names = find_code_fields(inputs)
     if len(digit_names) != CODE_LENGTH:
         raise YvwApiError(
-            f"Expected {CODE_LENGTH} code fields on the verification page, "
-            f"found {len(digit_names)}"
+            f"Expected {CODE_LENGTH} code fields on the verification page, found {len(digit_names)}"
         )
 
     digits = [character for character in code if character.isdigit()]
@@ -480,8 +477,7 @@ class YvwLogin:
             # later with something unrelated.
             if _LOGIN_FLOW_RE.search(final_url):
                 _LOGGER.error(
-                    "Reached the verification page but could not find the code "
-                    "fields. %s",
+                    "Reached the verification page but could not find the code fields. %s",
                     describe_form(html),
                 )
                 raise YvwApiError(

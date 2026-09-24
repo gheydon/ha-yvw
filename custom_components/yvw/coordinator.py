@@ -207,16 +207,15 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     @property
     def calibrating(self) -> bool:
         """Return whether the interval is being stretched to find the timeout."""
-        return bool(
-            self.config_entry.options.get(CONF_PROBE_ENABLED)
-        ) and not self.probe_state.concluded
+        return (
+            bool(self.config_entry.options.get(CONF_PROBE_ENABLED))
+            and not self.probe_state.concluded
+        )
 
     @property
     def learning_start(self) -> bool:
         """Return whether the start steers itself."""
-        return bool(
-            self.config_entry.options.get(CONF_ADAPTIVE_START, DEFAULT_ADAPTIVE_START)
-        )
+        return bool(self.config_entry.options.get(CONF_ADAPTIVE_START, DEFAULT_ADAPTIVE_START))
 
     @property
     def learned_start(self) -> LearnedStart | None:
@@ -251,17 +250,13 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     @property
     def catchup_from_hour(self) -> int:
         """Return the configured hour the daily look begins."""
-        hour = self.config_entry.options.get(
-            CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR
-        )
+        hour = self.config_entry.options.get(CONF_CATCHUP_FROM_HOUR, DEFAULT_CATCHUP_FROM_HOUR)
         return max(0, min(int(hour), 23))
 
     @property
     def catchup_hours(self) -> int:
         """Return how long to keep looking each morning."""
-        hours = self.config_entry.options.get(
-            CONF_CATCHUP_HOURS, DEFAULT_CATCHUP_HOURS
-        )
+        hours = self.config_entry.options.get(CONF_CATCHUP_HOURS, DEFAULT_CATCHUP_HOURS)
         # Past midnight the window would run into the next day's, so it stops
         # at the end of the day it started.
         return max(1, min(int(hours), 24 - (self.catchup_from_minutes // 60)))
@@ -269,9 +264,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     @property
     def configured_interval_minutes(self) -> int:
         """Return the interval the user asked for."""
-        return self.config_entry.options.get(
-            CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES
-        )
+        return self.config_entry.options.get(CONF_KEEPALIVE_MINUTES, DEFAULT_KEEPALIVE_MINUTES)
 
     @property
     def keepalive_interval(self) -> timedelta:
@@ -457,9 +450,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 self.config_entry.entry_id, idle_minutes
             )
             if proved and not self.calibrating:
-                _LOGGER.debug(
-                    "Session has now survived %s minutes idle untouched", idle_minutes
-                )
+                _LOGGER.debug("Session has now survived %s minutes idle untouched", idle_minutes)
 
             if self.calibrating:
                 next_minutes = round(self.keepalive_interval.total_seconds() / 60)
@@ -594,9 +585,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         self._last_contact = dt_util.utcnow()
         self.async_start_keepalive()
 
-        added = await async_insert_statistics(
-            self.hass, self.meter_serial, self.address, readings
-        )
+        added = await async_insert_statistics(self.hass, self.meter_serial, self.address, readings)
         if added:
             _LOGGER.debug("Recorded %s new hourly readings for %s", len(added), self.meter_serial)
             self._async_fire_new_readings(added)
@@ -705,9 +694,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def _morning(self, now: datetime) -> datetime:
         """Return the start of today's catch-up window."""
         minutes = self.catchup_from_minutes
-        return now.replace(
-            hour=minutes // 60, minute=minutes % 60, second=0, microsecond=0
-        )
+        return now.replace(hour=minutes // 60, minute=minutes % 60, second=0, microsecond=0)
 
     def _until_tomorrow_morning(self, now: datetime) -> timedelta:
         """Return the wait until the next catch-up window opens."""
@@ -775,9 +762,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
                 "address": self.address,
                 "detected_by": detected_by,
                 "session_age": str(self._session_age()),
-                "last_contact": (
-                    self._last_contact.isoformat() if self._last_contact else None
-                ),
+                "last_contact": (self._last_contact.isoformat() if self._last_contact else None),
             },
         )
 
@@ -809,9 +794,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         # Only a day the meter reported in full is a meaningful daily total;
         # a partial day would read as a sudden drop in consumption.
-        complete_days = [
-            day for day, hours in by_day.items() if len(hours) == HOURS_IN_A_FULL_DAY
-        ]
+        complete_days = [day for day, hours in by_day.items() if len(hours) == HOURS_IN_A_FULL_DAY]
         last_full_day = max(complete_days) if complete_days else None
 
         yesterday = (datetime.now(self._portal_tz) - timedelta(days=1)).date()

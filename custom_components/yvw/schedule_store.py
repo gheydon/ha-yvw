@@ -82,9 +82,7 @@ class ScheduleStore:
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialise the store."""
-        self._store: Store[dict[str, dict]] = Store(
-            hass, STORAGE_VERSION, SCHEDULE_STORAGE_KEY
-        )
+        self._store: Store[dict[str, dict]] = Store(hass, STORAGE_VERSION, SCHEDULE_STORAGE_KEY)
         self._starts: dict[str, LearnedStart] = {}
 
     async def async_load(self) -> None:

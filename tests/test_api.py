@@ -110,9 +110,7 @@ async def test_requests_are_clamped_to_the_portals_thirty_day_horizon(portal_tz)
     api = YvwApi(client, portal_tz)
     end = date(2026, 8, 28)
 
-    await api.async_get_hourly_usage(
-        "1234567890", "YAW0000001", end - timedelta(days=365), end
-    )
+    await api.async_get_hourly_usage("1234567890", "YAW0000001", end - timedelta(days=365), end)
 
     assert len(client.calls) == 1
     argument = client.calls[0]["argument"]

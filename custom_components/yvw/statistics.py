@@ -89,9 +89,7 @@ async def async_insert_statistics(
             continue
         running_sum += reading.litres
         added.append(reading)
-        statistics.append(
-            StatisticData(start=reading.start, state=reading.litres, sum=running_sum)
-        )
+        statistics.append(StatisticData(start=reading.start, state=reading.litres, sum=running_sum))
 
     if not statistics:
         return []

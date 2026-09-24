@@ -195,8 +195,7 @@ def page_headers() -> dict[str, str]:
     return {
         **BROWSER_HEADERS,
         "Accept": (
-            "text/html,application/xhtml+xml,application/xml;q=0.9,"
-            "image/avif,image/webp,*/*;q=0.8"
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         ),
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
@@ -447,9 +446,7 @@ class YvwAuraClient:
                 # the user to sign in again.
                 if held is None:
                     raise
-                _LOGGER.debug(
-                    "Could not reload the page; retrying with the context already held"
-                )
+                _LOGGER.debug("Could not reload the page; retrying with the context already held")
                 self._aura = held
             return await self._async_invoke_once(classname, method, params)
 

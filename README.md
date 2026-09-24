@@ -176,7 +176,13 @@ restart or an extra poll does not drag the time around.
 The learned time is shown by the **Looking for readings from** sensor, under
 **Configure**, and in the diagnostics download. The sensor carries whether the
 time was learned or configured, when it last moved, and when the next window
-opens. Turning
+opens.
+
+Its state is a number — hours after midnight, so 2.5 is half past two — rather
+than a clock face, because the whole point of it is the trend. It moves half an
+hour at a time, and which way it has been going is the thing worth seeing; a
+graph of "02:30" cannot show that. The clock reading is an attribute, `clock`,
+for when you want to read it rather than plot it. Turning
 learning off pins the start back to the hour you set; what was learned is set
 aside rather than discarded, and is picked up again if you turn it back on.
 
@@ -203,7 +209,7 @@ that dashboard — the portal's own billing figures are not used.
 | Last full day usage | Litres across the most recent complete day |
 | Last reading | When the meter last reported, which is the end of the hour it covers |
 | Session | Whether the sign-in still works: `active` or `expired` |
-| Looking for readings from | The time each morning's look begins, learned or configured |
+| Looking for readings from | Hours after midnight that each morning's look begins, learned or configured |
 
 The keep-alive has no sensor of its own — when it last ran is an attribute of
 the session sensor, which is the thing it exists to protect.

@@ -52,9 +52,7 @@ def _login(**kwargs) -> AsyncMock:
     return login
 
 
-SUMMARY = AccountSummary(
-    account_id=ACCOUNT, address=SITE.address, status="Active"
-)
+SUMMARY = AccountSummary(account_id=ACCOUNT, address=SITE.address, status="Active")
 OTHER = AccountSummary(
     account_id="9876543210", address="9 Other Walk, Elsewhere, Vic, 3064", status="Inactive"
 )
@@ -74,9 +72,7 @@ async def _run(hass: HomeAssistant, login: AsyncMock, api: AsyncMock):
         patch("custom_components.yvw.config_flow.YvwAuraClient"),
         patch("custom_components.yvw.async_setup_entry", return_value=True),
     ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}
-        )
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_USERNAME: EMAIL, CONF_PASSWORD: PASSWORD}
         )
@@ -182,9 +178,7 @@ async def test_a_typed_account_number_is_accepted(
         patch("custom_components.yvw.config_flow.YvwAuraClient"),
         patch("custom_components.yvw.async_setup_entry", return_value=True),
     ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_USER}
-        )
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_USERNAME: EMAIL, CONF_PASSWORD: PASSWORD}
         )

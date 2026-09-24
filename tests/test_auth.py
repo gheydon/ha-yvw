@@ -183,7 +183,6 @@ async def test_submitting_a_code_does_not_refetch_the_page(monkeypatch) -> None:
     login, _ = await _login_with(monkeypatch, session)
     gets_after_login = len(session.gets)
 
-
     async def fake_finish():
         return "sid-value"
 
@@ -213,9 +212,7 @@ async def test_resending_reloads_the_page(monkeypatch) -> None:
 async def test_no_verification_step_skips_the_page_fetch(monkeypatch) -> None:
     """Some sign-ins may not challenge; nothing should be fetched then."""
     session = FakeSession()
-    login, mfa_type = await _login_with(
-        monkeypatch, session, result={"pageUrl": None}
-    )
+    login, mfa_type = await _login_with(monkeypatch, session, result={"pageUrl": None})
 
     assert mfa_type is None
     assert session.gets == []
@@ -223,8 +220,8 @@ async def test_no_verification_step_skips_the_page_fetch(monkeypatch) -> None:
 
 
 FRONTDOOR_BOUNCE = (
-    '<html><head><title>Redirect</title></head><body>'
-    '<script>window.location.replace('
+    "<html><head><title>Redirect</title></head><body>"
+    "<script>window.location.replace("
     "'https://myaccount.yvw.com.au/myaccount/s/?amp;x=1');</script>"
     "</body></html>"
 )
@@ -243,9 +240,7 @@ def test_a_javascript_bounce_is_recognised() -> None:
 
 
 def test_a_meta_refresh_is_recognised() -> None:
-    assert find_client_redirect(META_BOUNCE) == (
-        "/myaccount/apex/MALoginFlowVFPage?retURL=%2F"
-    )
+    assert find_client_redirect(META_BOUNCE) == ("/myaccount/apex/MALoginFlowVFPage?retURL=%2F")
 
 
 def test_a_page_with_no_bounce_returns_nothing() -> None:
@@ -328,9 +323,7 @@ def test_code_fields_are_found_by_shape_when_the_names_differ() -> None:
     page = (
         '<form action="/x"><input type="hidden" name="com.salesforce.visualforce.ViewState"'
         ' value="STATE" />'
-        + "".join(
-            f'<input type="text" name="code_{index}" maxlength="1" />' for index in range(6)
-        )
+        + "".join(f'<input type="text" name="code_{index}" maxlength="1" />' for index in range(6))
         + '<input type="submit" name="go" value="Submit" /></form>'
     )
 
@@ -444,8 +437,7 @@ def test_the_ajax_parameters_are_posted_instead_of_the_button_label() -> None:
         '<input type="hidden" name="com.salesforce.visualforce.ViewState" value="S" />'
         + "".join(
             f'<input type="hidden" name="mfapage:theForm:page:{ordinal}Hidden" value="" />'
-            for ordinal in
-            ("first", "second", "third", "fourth", "fifth", "sixth")
+            for ordinal in ("first", "second", "third", "fourth", "fifth", "sixth")
         )
         + f'<input type="submit" name="mfapage:theForm:page:j_id73:j_id82"'
         f' value="Submit" onclick="{A4J_ONCLICK}" /></form>'
@@ -455,9 +447,6 @@ def test_the_ajax_parameters_are_posted_instead_of_the_button_label() -> None:
 
     assert payload["AJAXREQUEST"] == "mfapage:theForm"
     # The button echoes its own client id, not its label.
-    assert (
-        payload["mfapage:theForm:page:j_id73:j_id82"]
-        == "mfapage:theForm:page:j_id73:j_id82"
-    )
+    assert payload["mfapage:theForm:page:j_id73:j_id82"] == "mfapage:theForm:page:j_id73:j_id82"
     assert payload["mfapage:theForm:page:firstHidden"] == "3"
     assert payload["mfapage:theForm:page:sixthHidden"] == "4"

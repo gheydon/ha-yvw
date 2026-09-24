@@ -73,9 +73,7 @@ def _token_claims(token: str) -> dict[str, Any]:
         header = json.loads(base64.urlsafe_b64decode(segment))
     except (ValueError, binascii.Error):
         return {"decoded": False}
-    claims: dict[str, Any] = {
-        name: header[name] for name in SAFE_TOKEN_CLAIMS if name in header
-    }
+    claims: dict[str, Any] = {name: header[name] for name in SAFE_TOKEN_CLAIMS if name in header}
     claims["decoded"] = True
     # exp of 0 means the token itself never expires; the session governs it.
     claims["expires"] = bool(header.get("exp"))
