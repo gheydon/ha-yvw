@@ -6,7 +6,7 @@ import logging
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from homeassistant.components.logbook import async_log_entry
@@ -37,7 +37,6 @@ from .const import (
     EVENT_KEEPALIVE,
     EVENT_NEW_READINGS,
     FAILURE_RETRY,
-    HOURS_IN_A_DAY,
     KEEPALIVE_JITTER,
     KEEPALIVE_RETRY,
     MAX_FAILURE_RETRY,
@@ -57,8 +56,6 @@ from .statistics import async_insert_statistics, statistic_id_for
 _LOGGER = logging.getLogger(__name__)
 
 type YvwConfigEntry = ConfigEntry[YvwCoordinator]
-
-HOURS_IN_A_FULL_DAY = 24
 
 
 @dataclass(slots=True)
@@ -784,6 +781,24 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             },
         )
 
+    def _hours_in_day(self, day: date) -> int:
+        """Return how many hours that day actually has where the meter is.
+
+        Not always 24. The day daylight saving begins has 23 and the day it ends
+        has 25, and a meter reporting hourly reports that many times. Treating
+        every day as 24 would mean the short day never looked complete, so the
+        morning would keep asking for an hour that does not exist, and the long
+        day would never count as a full day either.
+
+        The subtraction goes through UTC deliberately: two aware datetimes that
+        share a timezone subtract by wall clock, which would always answer 24.
+        """
+        midnight = datetime.combine(day, time.min, tzinfo=self._portal_tz)
+        next_midnight = datetime.combine(day + timedelta(days=1), time.min, tzinfo=self._portal_tz)
+        return round(
+            (next_midnight.astimezone(UTC) - midnight.astimezone(UTC)).total_seconds() / 3600
+        )
+
     def _summarise(self, readings: list[UsageReading]) -> YvwData:
         if not readings:
             return YvwData()
@@ -794,13 +809,15 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
 
         # Only a day the meter reported in full is a meaningful daily total;
         # a partial day would read as a sudden drop in consumption.
-        complete_days = [day for day, hours in by_day.items() if len(hours) == HOURS_IN_A_FULL_DAY]
+        complete_days = [
+            day for day, hours in by_day.items() if len(hours) >= self._hours_in_day(day)
+        ]
         last_full_day = max(complete_days) if complete_days else None
 
         yesterday = (datetime.now(self._portal_tz) - timedelta(days=1)).date()
         return YvwData(
             latest=readings[-1],
-            yesterday_complete=len(by_day.get(yesterday, ())) >= HOURS_IN_A_DAY,
+            yesterday_complete=(len(by_day.get(yesterday, ())) >= self._hours_in_day(yesterday)),
             last_full_day=last_full_day,
             last_full_day_litres=(
                 sum(hour.litres for hour in by_day[last_full_day])

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -1255,3 +1255,96 @@ async def test_the_start_time_is_a_number_so_it_can_be_graphed(
     assert looking.attributes["clock"] == "00:30"
     assert looking.attributes["unit_of_measurement"] == "h"
     assert looking.attributes["state_class"] == "measurement"
+
+
+# --- Days that are not twenty-four hours long -------------------------------
+
+
+def _readings_for(day: date, hours: int) -> list[UsageReading]:
+    """Return one reading per actual hour of a local day.
+
+    The stepping is done in UTC on purpose. Adding an hour to a wall-clock time
+    skips or repeats the daylight saving hour rather than advancing real time,
+    which is the very confusion these tests exist to guard against.
+    """
+    start = datetime.combine(day, datetime.min.time(), tzinfo=MELBOURNE).astimezone(UTC)
+    return [
+        UsageReading(start=(start + timedelta(hours=i)).astimezone(MELBOURNE), litres=10.0)
+        for i in range(hours)
+    ]
+
+
+def test_the_day_daylight_saving_starts_is_twenty_three_hours(
+    hass: HomeAssistant,
+) -> None:
+    """Melbourne's clocks go forward on 4 October 2026, so that day is short."""
+    coordinator = build_coordinator(hass, StubApi())
+
+    assert coordinator._hours_in_day(date(2026, 10, 4)) == 23
+    assert coordinator._hours_in_day(date(2026, 10, 3)) == 24
+    assert coordinator._hours_in_day(date(2026, 10, 5)) == 24
+
+
+def test_the_day_daylight_saving_ends_is_twenty_five_hours(
+    hass: HomeAssistant,
+) -> None:
+    """And back again in April, when the day gains an hour."""
+    coordinator = build_coordinator(hass, StubApi())
+
+    assert coordinator._hours_in_day(date(2027, 4, 4)) == 25
+
+
+async def test_a_short_day_still_counts_as_complete(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The meter cannot report an hour the clock skipped.
+
+    Demanding twenty-four would leave the morning asking every ten minutes for
+    an hour that never existed, and the day would never be totalled.
+    """
+    short = date(2026, 10, 4)
+    coordinator = build_coordinator(hass, StubApi())
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = datetime(2026, 10, 5, 3, 0, tzinfo=MELBOURNE)
+        clock.combine = datetime.combine
+        clock.min = datetime.min
+        data = coordinator._summarise(_readings_for(short, 23))
+
+    assert data.yesterday_complete is True
+    assert data.last_full_day == short
+    assert data.last_full_day_litres == 230.0
+
+
+async def test_a_long_day_counts_as_complete_too(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Twenty-five readings is a full day in April, not an oddity to discard."""
+    long_day = date(2027, 4, 4)
+    coordinator = build_coordinator(hass, StubApi())
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = datetime(2027, 4, 5, 3, 0, tzinfo=MELBOURNE)
+        clock.combine = datetime.combine
+        clock.min = datetime.min
+        data = coordinator._summarise(_readings_for(long_day, 25))
+
+    assert data.yesterday_complete is True
+    assert data.last_full_day == long_day
+
+
+async def test_an_ordinary_day_still_needs_all_its_hours(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The short-day allowance must not let a genuinely partial day through."""
+    ordinary = date(2026, 9, 23)
+    coordinator = build_coordinator(hass, StubApi())
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = datetime(2026, 9, 24, 3, 0, tzinfo=MELBOURNE)
+        clock.combine = datetime.combine
+        clock.min = datetime.min
+        data = coordinator._summarise(_readings_for(ordinary, 23))
+
+    assert data.yesterday_complete is False
+    assert data.last_full_day is None

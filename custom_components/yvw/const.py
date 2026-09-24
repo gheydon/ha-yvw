@@ -153,8 +153,6 @@ ADAPTIVE_LATEST_MINUTES = 10 * 60
 
 SCHEDULE_STORAGE_KEY = f"{DOMAIN}.schedule"
 
-# A full day of hourly readings.
-HOURS_IN_A_DAY = 24
 
 # Fallback when the schedule cannot be worked out.
 UPDATE_INTERVAL = timedelta(hours=12)

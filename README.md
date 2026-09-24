@@ -428,6 +428,9 @@ If yours expires at a suspiciously round age, that is worth
   Assistant from then on.
 - **Hours the meter did not report are skipped, not stored as zero.** The portal
   pads its response with zero-litre rows; recording those would invent readings.
+- **A day is complete when the meter has reported every hour that day actually
+  had.** Usually twenty-four, but twenty-three the day daylight saving starts
+  and twenty-five the day it ends.
 - **Readings arrive about a day late.** That is the portal, not the integration.
 - **Multiple properties on one login are unverified.** The code reads every
   property it can find and asks which to follow, but it has only been run
