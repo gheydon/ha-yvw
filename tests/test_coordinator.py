@@ -38,6 +38,7 @@ from custom_components.yvw.const import (
     FAILURE_RETRY,
     KEEPALIVE_RETRY,
     MAX_FAILURE_RETRY,
+    MAX_HISTORY_DAYS,
     MAX_KEEPALIVE_MINUTES,
     MAX_PROBE_MINUTES,
     UPDATE_INTERVAL,
@@ -59,8 +60,10 @@ class StubApi:
         self.readings = readings or []
         self.error = error
         self.pings = 0
+        self.windows: list[tuple] = []
 
     async def async_get_hourly_usage(self, account_id, meter_serial, start_date, end_date):
+        self.windows.append((start_date, end_date))
         if self.error:
             raise self.error
         return self.readings
@@ -1348,3 +1351,39 @@ async def test_an_ordinary_day_still_needs_all_its_hours(
 
     assert data.yesterday_complete is False
     assert data.last_full_day is None
+
+
+async def test_today_is_never_asked_for(recorder_mock: Recorder, hass: HomeAssistant) -> None:
+    """How much of today the portal has depends on the hour the look begins.
+
+    Asking for it would put a bar on today's chart on some days and not others,
+    for no gain: those hours arrive tomorrow as a complete day. Yarra Valley
+    Water's own site does not offer today either.
+    """
+    api = StubApi()
+    coordinator = build_coordinator(hass, api)
+    moment = datetime(2026, 10, 5, 1, 30, tzinfo=MELBOURNE)
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        await coordinator._async_update_data()
+
+    start, end = api.windows[-1]
+    assert end == date(2026, 10, 4), "the window must stop at yesterday"
+    assert start == date(2026, 10, 4) - timedelta(days=MAX_HISTORY_DAYS)
+
+
+async def test_the_window_still_covers_the_portals_whole_horizon(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Ending a day earlier must not shorten how far back a gap can be healed."""
+    api = StubApi()
+    coordinator = build_coordinator(hass, api)
+    moment = datetime(2026, 10, 5, 1, 30, tzinfo=MELBOURNE)
+
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        await coordinator._async_update_data()
+
+    start, end = api.windows[-1]
+    assert (end - start).days == MAX_HISTORY_DAYS

@@ -439,6 +439,11 @@ If yours expires at a suspiciously round age, that is worth
   that follows it. Hours the meter never reported are left alone: a gap the
   portal also has is normal, not damage.
 - **Readings arrive about a day late.** That is the portal, not the integration.
+- **Today is never asked for.** The portal will serve whichever hours of today
+  have finished, but how many that is depends on the time the morning's look
+  happens to start, so today's chart would gain a stray bar on some days and not
+  others. Yarra Valley Water's own site does not offer today either. Those hours
+  arrive tomorrow as part of a complete day.
 - **Multiple properties on one login are unverified.** The code reads every
   property it can find and asks which to follow, but it has only been run
   against a single-property login. If yours covers several, see below.

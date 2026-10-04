@@ -556,13 +556,21 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         return data
 
     async def _async_poll(self) -> YvwData:
-        """Fetch readings, append them to statistics, and summarise the latest."""
-        today = datetime.now(self._portal_tz).date()
-        start_date = today - timedelta(days=MAX_HISTORY_DAYS)
+        """Fetch readings, append them to statistics, and summarise the latest.
+
+        Only up to yesterday is asked for. The portal will serve whichever hours
+        of today have finished, but how many that is depends on the time the
+        morning's look happens to start, so today's chart would gain a stray bar
+        on some days and not others. Yarra Valley Water's own site does not offer
+        today either. Nothing is lost by waiting: those hours arrive tomorrow as
+        part of a complete day.
+        """
+        yesterday = (datetime.now(self._portal_tz) - timedelta(days=1)).date()
+        start_date = yesterday - timedelta(days=MAX_HISTORY_DAYS)
 
         try:
             readings = await self.api.async_get_hourly_usage(
-                self.account_id, self.meter_serial, start_date, today
+                self.account_id, self.meter_serial, start_date, yesterday
             )
         except YvwAuthError as err:
             _LOGGER.warning(
