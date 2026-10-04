@@ -1387,3 +1387,56 @@ async def test_the_window_still_covers_the_portals_whole_horizon(
 
     start, end = api.windows[-1]
     assert (end - start).days == MAX_HISTORY_DAYS
+
+
+# --- The window keeps local time across a daylight saving change ------------
+
+
+def _wait_at(hass: HomeAssistant, moment: datetime, start_hour: int) -> timedelta:
+    """Return the wait to tomorrow's window, computed at a given moment."""
+    coordinator = build_coordinator(hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: start_hour})
+    with patch("custom_components.yvw.coordinator.datetime") as clock:
+        clock.now.return_value = moment
+        return coordinator._until_tomorrow_morning(moment)
+
+
+def test_the_wait_to_tomorrow_is_real_time_not_clock_time(hass: HomeAssistant) -> None:
+    """Home Assistant waits the delay in real seconds, so it must be real time.
+
+    On the night clocks go forward an hour of the clock never happens, so the
+    wait to the same reading of the clock tomorrow is an hour shorter. Measured
+    on the clock face it would be an hour too long and the morning would open at
+    02:00 instead of 01:00.
+    """
+    forward = _wait_at(hass, datetime(2026, 10, 4, 1, 5, tzinfo=MELBOURNE), 1)
+    assert forward == timedelta(hours=22, minutes=55)
+
+
+def test_the_wait_is_an_hour_longer_when_clocks_go_back(hass: HomeAssistant) -> None:
+    """And in April the day gains an hour, so the wait is longer."""
+    back = _wait_at(hass, datetime(2027, 4, 4, 1, 5, tzinfo=MELBOURNE), 1)
+    assert back == timedelta(days=1, minutes=55)
+
+
+def test_an_ordinary_night_waits_the_usual_day(hass: HomeAssistant) -> None:
+    """Nothing changes on the other three hundred and sixty three nights."""
+    ordinary = _wait_at(hass, datetime(2026, 9, 20, 1, 5, tzinfo=MELBOURNE), 1)
+    assert ordinary == timedelta(hours=23, minutes=55)
+
+
+def test_the_window_lasts_its_full_hours_on_a_short_day(hass: HomeAssistant) -> None:
+    """Six hours of looking means six real hours, not six hours of the clock.
+
+    Measured on the clock face the window would close an hour early on the day
+    the clocks go forward, cutting six attempts off the morning that most needs
+    them.
+    """
+    coordinator = build_coordinator(
+        hass, StubApi(), {CONF_CATCHUP_FROM_HOUR: 1, CONF_CATCHUP_HOURS: 6}
+    )
+    # The window opens 01:00 AEST and runs six real hours, to 08:00 AEDT. On the
+    # clock face that reads as seven hours, because one of them never happened.
+    assert coordinator._in_window(datetime(2026, 10, 4, 7, 30, tzinfo=MELBOURNE)) is True
+    assert coordinator._in_window(datetime(2026, 10, 4, 8, 0, tzinfo=MELBOURNE)) is False
+    # Before it opens is still outside.
+    assert coordinator._in_window(datetime(2026, 10, 4, 0, 30, tzinfo=MELBOURNE)) is False

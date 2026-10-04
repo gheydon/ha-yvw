@@ -58,6 +58,17 @@ _LOGGER = logging.getLogger(__name__)
 type YvwConfigEntry = ConfigEntry[YvwCoordinator]
 
 
+def _elapsed(start: datetime, end: datetime) -> timedelta:
+    """Return the time that actually passes between two moments.
+
+    Subtracting two aware datetimes that share a timezone compares clock faces
+    and ignores the offset, so across a daylight saving change it answers an
+    hour out. Everything here is a delay that Home Assistant will wait in real
+    seconds, so the comparison has to be made in real time.
+    """
+    return end.astimezone(UTC) - start.astimezone(UTC)
+
+
 @dataclass(slots=True)
 class YvwData:
     """The most recent readings, for the sensor entities."""
@@ -688,22 +699,28 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def _in_window(self, now: datetime) -> bool:
         """Return whether now is inside today's catch-up window."""
         opens = self._morning(now)
-        return opens <= now < opens + timedelta(hours=self.catchup_hours)
+        if now < opens:
+            return False
+        return _elapsed(opens, now) < timedelta(hours=self.catchup_hours)
 
     def _next_window(self, now: datetime) -> timedelta:
         """Return the wait until the catch-up window next opens."""
         if now < self._morning(now):
-            return self._morning(now) - now
+            return _elapsed(now, self._morning(now))
         return self._until_tomorrow_morning(now)
 
     def _morning(self, now: datetime) -> datetime:
-        """Return the start of today's catch-up window."""
+        """Return the start of today's catch-up window.
+
+        A wall clock time: the look begins at the same reading of the clock all
+        year, so it does not wander by an hour when daylight saving starts.
+        """
         minutes = self.catchup_from_minutes
         return now.replace(hour=minutes // 60, minute=minutes % 60, second=0, microsecond=0)
 
     def _until_tomorrow_morning(self, now: datetime) -> timedelta:
         """Return the wait until the next catch-up window opens."""
-        return self._morning(now + timedelta(days=1)) - now
+        return _elapsed(now, self._morning(now + timedelta(days=1)))
 
     @callback
     def _async_fire(self, event_type: str, data: dict[str, Any]) -> None:

@@ -173,6 +173,12 @@ later than 10am — past either, something other than the schedule is wrong, and
 chasing it would only hide that. Only the first find of each day counts, so a
 restart or an extra poll does not drag the time around.
 
+The time is a reading of the local clock and stays put all year: if it has
+settled on 01:30 it is 01:30 before and after daylight saving, not 00:30 for half
+of it. The waits between windows are measured in real elapsed time so that holds
+true across the night the clocks change, and the window lasts its full number of
+hours even on the day that is only twenty-three hours long.
+
 The learned time is shown by the **Looking for readings from** sensor, under
 **Configure**, and in the diagnostics download. The sensor carries whether the
 time was learned or configured, when it last moved, and when the next window

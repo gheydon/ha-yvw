@@ -202,6 +202,7 @@ async def test_a_wrong_figure_is_corrected_and_the_total_realigned(
     start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
 
     await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 999, 30]))
+    await async_wait_recording_done(hass)
     await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 20, 30]))
 
     rows = await _stored(hass, statistic_id_for(METER))
@@ -217,6 +218,7 @@ async def test_a_poll_that_agrees_rewrites_nothing(
     first = readings(start, [10, 20, 30])
 
     await async_insert_statistics(hass, METER, ADDRESS, first)
+    await async_wait_recording_done(hass)
     added = await async_insert_statistics(hass, METER, ADDRESS, first)
 
     assert added == []
@@ -235,6 +237,7 @@ async def test_hours_the_meter_never_reported_are_not_treated_as_damage(
     ]
 
     await async_insert_statistics(hass, METER, ADDRESS, sparse)
+    await async_wait_recording_done(hass)
     added = await async_insert_statistics(hass, METER, ADDRESS, sparse)
 
     assert added == []
@@ -251,6 +254,7 @@ async def test_the_repair_keeps_everything_before_it_untouched(
     damaged = [*whole[:3], whole[4]]
 
     await async_insert_statistics(hass, METER, ADDRESS, damaged)
+    await async_wait_recording_done(hass)
     await async_insert_statistics(hass, METER, ADDRESS, whole)
 
     rows = await _stored(hass, statistic_id_for(METER))
