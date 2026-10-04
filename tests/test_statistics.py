@@ -165,3 +165,94 @@ async def test_readings_older_than_the_window_cannot_be_recovered(
     Worth pinning: it is the reason re-authenticating promptly matters.
     """
     assert MAX_HISTORY_DAYS == 30
+
+
+# --- Repairing history that went in wrong -----------------------------------
+
+
+async def test_a_missing_hour_is_filled_in_on_the_next_poll(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """An hour lost to a bug is not lost for good.
+
+    This is what the daylight saving collision did on 4 October 2026: one hour
+    silently replaced another, so the series was short an hour and every total
+    after it was short that hour's litres.
+    """
+    start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
+    whole = readings(start, [10, 20, 30, 40])
+    missing_second = [whole[0], *whole[2:]]
+
+    await async_insert_statistics(hass, METER, ADDRESS, missing_second)
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["sum"] for row in rows] == [10, 40, 80], "the damaged series"
+
+    added = await async_insert_statistics(hass, METER, ADDRESS, whole)
+
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["state"] for row in rows] == [10, 20, 30, 40]
+    assert [row["sum"] for row in rows] == [10, 30, 60, 100]
+    assert [r.litres for r in added] == [20, 30, 40]
+
+
+async def test_a_wrong_figure_is_corrected_and_the_total_realigned(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """The portal is the authority; a stored hour that disagrees is rewritten."""
+    start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
+
+    await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 999, 30]))
+    await async_insert_statistics(hass, METER, ADDRESS, readings(start, [10, 20, 30]))
+
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["state"] for row in rows] == [10, 20, 30]
+    assert [row["sum"] for row in rows] == [10, 30, 60]
+
+
+async def test_a_poll_that_agrees_rewrites_nothing(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Repair must be the exception. Re-reading the window normally costs nothing."""
+    start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
+    first = readings(start, [10, 20, 30])
+
+    await async_insert_statistics(hass, METER, ADDRESS, first)
+    added = await async_insert_statistics(hass, METER, ADDRESS, first)
+
+    assert added == []
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["sum"] for row in rows] == [10, 30, 60]
+
+
+async def test_hours_the_meter_never_reported_are_not_treated_as_damage(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """A gap the portal also has is normal, and must not trigger a rewrite."""
+    start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
+    sparse = [
+        UsageReading(start=start, litres=10),
+        UsageReading(start=start + timedelta(hours=3), litres=30),
+    ]
+
+    await async_insert_statistics(hass, METER, ADDRESS, sparse)
+    added = await async_insert_statistics(hass, METER, ADDRESS, sparse)
+
+    assert added == []
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["sum"] for row in rows] == [10, 40]
+
+
+async def test_the_repair_keeps_everything_before_it_untouched(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """Only the damage and what follows is rewritten; earlier totals stand."""
+    start = datetime(2026, 8, 20, 1, 0, tzinfo=MELBOURNE)
+    whole = readings(start, [10, 20, 30, 40, 50])
+    damaged = [*whole[:3], whole[4]]
+
+    await async_insert_statistics(hass, METER, ADDRESS, damaged)
+    await async_insert_statistics(hass, METER, ADDRESS, whole)
+
+    rows = await _stored(hass, statistic_id_for(METER))
+    assert [row["state"] for row in rows] == [10, 20, 30, 40, 50]
+    assert [row["sum"] for row in rows] == [10, 30, 60, 100, 150]

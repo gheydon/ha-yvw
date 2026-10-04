@@ -431,9 +431,13 @@ If yours expires at a suspiciously round age, that is worth
 - **A day is complete when the meter has reported every hour that day actually
   had.** Usually twenty-four, but twenty-three the day daylight saving starts
   and twenty-five the day it ends.
-- **Readings already recorded are never revisited.** A poll adds hours newer
-  than the last one stored and leaves the rest alone, so a gap caused by a bug
-  rather than by absence has to be repaired deliberately.
+- **History repairs itself.** The portal is re-read over a rolling window every
+  time, so a stretch that went in wrong does not have to stay wrong. If any hour
+  disagrees with what is stored, or is missing from it, that hour and everything
+  after it is written again with the running total recalculated. Appending alone
+  could never fix that, because a total that is short stays short for every hour
+  that follows it. Hours the meter never reported are left alone: a gap the
+  portal also has is normal, not damage.
 - **Readings arrive about a day late.** That is the portal, not the integration.
 - **Multiple properties on one login are unverified.** The code reads every
   property it can find and asks which to follow, but it has only been run
