@@ -431,6 +431,9 @@ If yours expires at a suspiciously round age, that is worth
 - **A day is complete when the meter has reported every hour that day actually
   had.** Usually twenty-four, but twenty-three the day daylight saving starts
   and twenty-five the day it ends.
+- **Readings already recorded are never revisited.** A poll adds hours newer
+  than the last one stored and leaves the rest alone, so a gap caused by a bug
+  rather than by absence has to be repaired deliberately.
 - **Readings arrive about a day late.** That is the portal, not the integration.
 - **Multiple properties on one login are unverified.** The code reads every
   property it can find and asks which to follow, but it has only been run

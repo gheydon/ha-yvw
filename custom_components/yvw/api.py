@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from .aura import YvwAuraClient
@@ -259,7 +259,11 @@ class YvwApi:
             )
             start_date = earliest
 
-        readings: dict[datetime, UsageReading] = {}
+        # Keyed by the instant, not the local datetime: two readings an hour
+        # apart over the end of daylight saving show the same time on the clock,
+        # and datetimes in one timezone that differ only in which of the two
+        # they are compare and hash as equal, so one would replace the other.
+        readings: dict[float, UsageReading] = {}
         chunk_start = start_date
         while chunk_start <= end_date:
             # dateFrom may be up to MAX_HISTORY_DAYS before dateTo, so a window
@@ -268,7 +272,7 @@ class YvwApi:
             for reading in await self._async_get_usage_chunk(
                 account_id, meter_serial, chunk_start, chunk_end
             ):
-                readings[reading.start] = reading
+                readings[reading.start.timestamp()] = reading
             chunk_start = chunk_end + timedelta(days=1)
 
         return [readings[key] for key in sorted(readings)]
@@ -301,17 +305,22 @@ class YvwApi:
             return []
 
         readings = []
+        # The hour clocks go back is reported twice with the same local time.
+        # The second one is the later of the two, which is what fold marks.
+        seen: set[tuple[str, str]] = set()
         for entry in response.get("usages") or []:
             # Hours the meter did not report come back zero-filled. Recording
             # them would fabricate consumption of exactly nothing.
             if entry.get("measureStatus") != STATUS_ACTUAL:
                 continue
-            reading = self._parse_entry(entry)
+            stamp = (str(entry.get("usageDate")), str(entry.get("hourOfTheDay")))
+            reading = self._parse_entry(entry, repeated=stamp in seen)
+            seen.add(stamp)
             if reading is not None:
                 readings.append(reading)
         return readings
 
-    def _parse_entry(self, entry: dict[str, Any]) -> UsageReading | None:
+    def _parse_entry(self, entry: dict[str, Any], *, repeated: bool = False) -> UsageReading | None:
         raw_date = entry.get("usageDate")
         raw_hour = entry.get("hourOfTheDay")
         if not raw_date or not raw_hour:
@@ -321,7 +330,9 @@ class YvwApi:
             usage_date = date.fromisoformat(raw_date)
             hour, _, minute = raw_hour.partition(":")
             end_of_hour = datetime.combine(
-                usage_date, time(int(hour), int(minute or 0)), tzinfo=self._tz
+                usage_date,
+                time(int(hour), int(minute or 0), fold=1 if repeated else 0),
+                tzinfo=self._tz,
             )
         except ValueError:
             _LOGGER.debug("Skipping unparseable usage entry: %s %s", raw_date, raw_hour)
@@ -335,7 +346,14 @@ class YvwApi:
         # hourOfTheDay marks the END of the interval: the hour the portal shows
         # as "12pm - 1pm" arrives as 13:00, and midnight-to-1am of one day is
         # reported as 00:00 dated the following day.
-        return UsageReading(start=end_of_hour - timedelta(hours=1), litres=litres)
+        #
+        # Stepping back an hour has to happen in real time, not on the clock
+        # face. The morning daylight saving starts there is no 02:00, so taking
+        # an hour off 03:00 by wall clock lands on a time that did not happen
+        # and resolves to the same instant as 03:00 itself - putting two
+        # readings on one hour, where one quietly replaces the other.
+        start = end_of_hour.astimezone(UTC) - timedelta(hours=1)
+        return UsageReading(start=start.astimezone(self._tz), litres=litres)
 
 
 def account_ids_in(value: object) -> list[str]:

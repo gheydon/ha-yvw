@@ -8,6 +8,7 @@ recorded as zero consumption. These tests pin the conventions down.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from itertools import pairwise
 
 import pytest
 
@@ -191,3 +192,85 @@ async def test_a_reading_reports_at_the_end_of_its_hour(portal_tz) -> None:
 
     assert readings[0].start == datetime(2026, 8, 27, 23, 0, tzinfo=portal_tz)
     assert readings[0].end == datetime(2026, 8, 28, 0, 0, tzinfo=portal_tz)
+
+
+# --- The two mornings a year that are not twenty-four hours long ------------
+
+
+async def test_the_morning_clocks_go_forward_keeps_every_hour(portal_tz) -> None:
+    """On 4 October 2026 Melbourne jumps 02:00 to 03:00, so 02:00 never happens.
+
+    Stepping back an hour from 03:00 on the clock face lands on that missing
+    time, which resolves to the same instant as 03:00 itself. Two readings then
+    claim one hour and the dictionary keeps only the last, losing an hour of
+    consumption silently.
+    """
+    client = StubClient(
+        [
+            response(
+                [
+                    usage("2026-10-04", "01:00", 10),
+                    usage("2026-10-04", "03:00", 20),
+                    usage("2026-10-04", "04:00", 30),
+                ]
+            )
+        ]
+    )
+    api = YvwApi(client, portal_tz)
+
+    readings = await api.async_get_hourly_usage(
+        "1234567890", "YAW0000001", date(2026, 10, 4), date(2026, 10, 4)
+    )
+
+    assert [r.litres for r in readings] == [10, 20, 30]
+    # Compared as instants: a set of datetimes would collapse the two that show
+    # the same clock face, which is the very thing being guarded against.
+    starts = [r.start.timestamp() for r in readings]
+    assert len(set(starts)) == 3, "two readings landed on the same hour"
+    # Consecutive real hours. Measured on the timestamps on purpose: subtracting
+    # two datetimes in one timezone compares clock faces, and across the change
+    # that reads as two hours where only one passed.
+    gaps = [(b - a) / 3600 for a, b in pairwise(starts)]
+    assert gaps == [1.0, 1.0]
+
+
+async def test_the_morning_clocks_go_back_keeps_both_repeats(portal_tz) -> None:
+    """In April 02:00-03:00 happens twice, reported twice with the same label.
+
+    The second is the later of the two. Without that distinction both parse to
+    the same instant and one hour of consumption disappears.
+    """
+    client = StubClient(
+        [
+            response(
+                [
+                    usage("2027-04-04", "02:00", 11),
+                    usage("2027-04-04", "02:00", 22),
+                    usage("2027-04-04", "03:00", 33),
+                ]
+            )
+        ]
+    )
+    api = YvwApi(client, portal_tz)
+
+    readings = await api.async_get_hourly_usage(
+        "1234567890", "YAW0000001", date(2027, 4, 4), date(2027, 4, 4)
+    )
+
+    assert [r.litres for r in readings] == [11, 22, 33]
+    starts = [r.start.timestamp() for r in readings]
+    assert len(set(starts)) == 3, "the repeated hour overwrote itself"
+    gaps = [(b - a) / 3600 for a, b in pairwise(starts)]
+    assert gaps == [1.0, 1.0]
+
+
+async def test_an_ordinary_hour_is_unaffected(portal_tz) -> None:
+    """The real-time stepping must not disturb the other three hundred odd days."""
+    client = StubClient([response([usage("2026-08-27", "13:00", 43)])])
+    api = YvwApi(client, portal_tz)
+
+    readings = await api.async_get_hourly_usage(
+        "1234567890", "YAW0000001", date(2026, 8, 27), date(2026, 8, 27)
+    )
+
+    assert readings[0].start == datetime(2026, 8, 27, 12, 0, tzinfo=portal_tz)
