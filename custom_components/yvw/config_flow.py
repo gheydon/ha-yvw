@@ -200,7 +200,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             # The id alone is refused on a fresh client, so keep the rest
             # of what signing in established alongside it.
             self._cookies = self._login.session_cookies
-            self._summaries = await self._async_discover(self._sid)
+            self._summaries = await self._async_discover(self._sid, self._cookies)
         except YvwError as err:
             _LOGGER.error("Signed in but could not read the account: %s", err)
             return self.async_abort(reason="no_account")
@@ -235,7 +235,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 assert self._sid is not None
                 try:
-                    site = await self._async_read_account(self._sid, account_id)
+                    site = await self._async_read_account(self._sid, self._cookies, account_id)
                 except YvwError as err:
                     _LOGGER.debug("Could not read account %s: %s", account_id, err)
                     errors[CONF_ACCOUNT_ID] = "unknown_account"
@@ -269,7 +269,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         """Read the chosen property's meter details and persist the entry."""
         assert self._sid is not None
         try:
-            site = await self._async_read_account(self._sid, account_id)
+            site = await self._async_read_account(self._sid, self._cookies, account_id)
         except YvwError as err:
             _LOGGER.error("Could not read account %s: %s", account_id, err)
             return self.async_abort(reason="no_account")
@@ -326,20 +326,24 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                 len(html),
             )
 
-    async def _async_api(self, sid: str) -> YvwApi:
+    async def _async_api(self, sid: str, cookies: dict[str, str]) -> YvwApi:
         """Build an API client for a freshly signed-in session."""
         session = async_create_clientsession(self.hass)
         portal_tz = await dt_util.async_get_time_zone(PORTAL_TIMEZONE)
-        return YvwApi(YvwAuraClient(session, sid), portal_tz)
+        return YvwApi(YvwAuraClient(session, sid, cookies), portal_tz)
 
-    async def _async_discover(self, sid: str) -> list[AccountSummary]:
+    async def _async_discover(
+        self, sid: str, cookies: dict[str, str]
+    ) -> list[AccountSummary]:
         """Ask the portal which properties this login covers."""
-        api = await self._async_api(sid)
+        api = await self._async_api(sid, cookies)
         return await api.async_list_accounts()
 
-    async def _async_read_account(self, sid: str, account_id: str) -> AccountInfo:
+    async def _async_read_account(
+        self, sid: str, cookies: dict[str, str], account_id: str
+    ) -> AccountInfo:
         """Read one account by number."""
-        api = await self._async_api(sid)
+        api = await self._async_api(sid, cookies)
         return await api.async_get_account(account_id)
 
 

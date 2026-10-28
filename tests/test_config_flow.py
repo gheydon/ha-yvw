@@ -6,7 +6,7 @@ holding to a test rather than to a careful reading of the code.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from homeassistant.components.recorder import Recorder
@@ -65,11 +65,19 @@ def _api(accounts: list[AccountSummary] | None = None) -> AsyncMock:
     return api
 
 
-async def _run(hass: HomeAssistant, login: AsyncMock, api: AsyncMock):
+async def _run(
+    hass: HomeAssistant,
+    login: AsyncMock,
+    api: AsyncMock,
+    aura_client_factory: Mock | None = None,
+):
     with (
         patch("custom_components.yvw.config_flow.YvwLogin", return_value=login),
         patch("custom_components.yvw.config_flow.YvwApi", return_value=api),
-        patch("custom_components.yvw.config_flow.YvwAuraClient"),
+        patch(
+            "custom_components.yvw.config_flow.YvwAuraClient",
+            new=aura_client_factory if aura_client_factory is not None else Mock(),
+        ),
         patch("custom_components.yvw.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
@@ -106,6 +114,23 @@ async def test_signing_in_creates_the_entry(
         CONF_METER_SERIAL: "YAW0000001",
         CONF_ADDRESS: SITE.address,
     }
+
+
+async def test_new_api_clients_restore_the_full_cookie_set(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Discovery and account reads need the paired cookies from sign-in."""
+    login = _login()
+    aura_client_factory = Mock()
+
+    result = await _run(hass, login, _api(), aura_client_factory)
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert aura_client_factory.call_count == 2
+    assert all(
+        call.args[1:] == ("session-value", login.session_cookies)
+        for call in aura_client_factory.call_args_list
+    )
 
 
 async def test_no_credential_is_written_to_the_entry(
