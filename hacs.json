@@ -1,5 +1,4 @@
 {
   "name": "Yarra Valley Water",
-  "homeassistant": "2025.12.0",
-  "render_readme": true
+  "homeassistant": "2025.12.0"
 }

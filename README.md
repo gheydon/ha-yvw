@@ -1,11 +1,9 @@
 # Yarra Valley Water for Home Assistant
 
-[![HACS: custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Install: custom repository](https://img.shields.io/badge/install-custom%20repository-41BDF5.svg)](#installing)
 [![Release](https://img.shields.io/github/v/release/gheydon/ha-yvw?display_name=tag&sort=semver)](https://github.com/gheydon/ha-yvw/releases)
 [![Validate](https://github.com/gheydon/ha-yvw/actions/workflows/validate.yml/badge.svg)](https://github.com/gheydon/ha-yvw/actions/workflows/validate.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
-
-[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gheydon&repository=ha-yvw&category=integration)
 
 Brings the hourly readings from a Yarra Valley Water digital meter into Home
 Assistant, and writes them into long-term statistics so they show up on the
@@ -30,15 +28,33 @@ is what every later request uses. See [What is stored](#what-is-stored).
 
 ## Installing
 
-Click the button above, which opens this repository straight in HACS on your own
-Home Assistant. Then install "Yarra Valley Water" and restart.
+Home Assistant 2026.11 brings HACS into Home Assistant itself, renamed the
+**Marketplace**. Which of these you use depends on your version; nothing else
+about installing changed, and an existing install carries over on its own.
 
-By hand: HACS → three-dot menu → **Custom repositories** → add
-`https://github.com/gheydon/ha-yvw` with category **Integration**, then install
-"Yarra Valley Water" and restart Home Assistant.
+Either way this is a custom repository rather than one of the listed ones, so
+adding it asks you to connect a GitHub account. You enter a code on GitHub
+rather than a password, and it is what lets Home Assistant see new releases
+here.
 
-Or copy `custom_components/yvw` into your `config/custom_components/` directory
-and restart.
+**Home Assistant 2026.11 or newer**
+
+[![Open this repository in the Marketplace on your Home Assistant.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=gheydon&repository=ha-yvw&category=integration)
+
+By hand: **Settings → Marketplace** → three-dot menu → **Custom repositories**
+→ add `https://github.com/gheydon/ha-yvw` with category **Integration**.
+
+**Home Assistant 2026.10 or older**
+
+[![Open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gheydon&repository=ha-yvw&category=integration)
+
+By hand: HACS → three-dot menu → **Custom repositories** → add the same URL
+with the same category.
+
+Then install "Yarra Valley Water" and restart Home Assistant.
+
+Or, without either of them, copy `custom_components/yvw` into your
+`config/custom_components/` directory and restart.
 
 ## Setting up
 
