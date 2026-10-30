@@ -18,7 +18,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
-from custom_components.yvw.api import UsageReading
+from custom_components.yvw.api import AccountInfo, UsageReading
 from custom_components.yvw.const import (
     CATCHUP_RETRY,
     CONF_ACCOUNT_ID,
@@ -56,17 +56,34 @@ ADDRESS = "1 Example St, Suburb, Vic, 3000"
 class StubApi:
     """Stand in for the portal."""
 
-    def __init__(self, readings: list[UsageReading] | None = None, error=None) -> None:
+    def __init__(
+        self,
+        readings: list[UsageReading] | None = None,
+        error=None,
+        meter_serial: str = METER,
+        readings_by_meter: dict[str, list[UsageReading]] | None = None,
+    ) -> None:
         self.readings = readings or []
         self.error = error
         self.pings = 0
         self.windows: list[tuple] = []
+        self.meter_serial = meter_serial
+        self.readings_by_meter = readings_by_meter or {}
+        self.meters_asked: list[str] = []
 
     async def async_get_hourly_usage(self, account_id, meter_serial, start_date, end_date):
         self.windows.append((start_date, end_date))
+        self.meters_asked.append(meter_serial)
         if self.error:
             raise self.error
+        if meter_serial in self.readings_by_meter:
+            return self.readings_by_meter[meter_serial]
         return self.readings
+
+    async def async_get_account(self, account_id: str) -> AccountInfo:
+        return AccountInfo(
+            account_id=account_id, address=ADDRESS, meter_serial=self.meter_serial, has_usage=True
+        )
 
     async def async_ping(self, account_id: str) -> None:
         self.pings += 1
@@ -1440,3 +1457,35 @@ def test_the_window_lasts_its_full_hours_on_a_short_day(hass: HomeAssistant) -> 
     assert coordinator._in_window(datetime(2026, 10, 4, 8, 0, tzinfo=MELBOURNE)) is False
     # Before it opens is still outside.
     assert coordinator._in_window(datetime(2026, 10, 4, 0, 30, tzinfo=MELBOURNE)) is False
+
+
+async def test_an_empty_poll_follows_a_replaced_meter(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """When the account has a new meter, the poll adopts it rather than reporting nothing."""
+    api = StubApi(meter_serial="YAW0000002", readings_by_meter={"YAW0000002": hourly(3)})
+    coordinator = build_coordinator(hass, api)
+
+    await coordinator.async_refresh()
+    await async_wait_recording_done(hass)
+    await hass.async_block_till_done()
+
+    assert api.meters_asked == [METER, "YAW0000002"]
+    assert coordinator.meter_serial == "YAW0000002"
+    assert coordinator.config_entry.data[CONF_METER_SERIAL] == "YAW0000002"
+    assert coordinator.data.latest is not None
+
+
+async def test_an_empty_poll_with_the_same_meter_stays_empty(
+    recorder_mock: Recorder, hass: HomeAssistant
+) -> None:
+    """No readings and no meter change is simply a day the portal has nothing for."""
+    api = StubApi()
+    coordinator = build_coordinator(hass, api)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert api.meters_asked == [METER]
+    assert coordinator.meter_serial == METER
+    assert coordinator.data.latest is None

@@ -22,6 +22,7 @@ from .const import (
 )
 from .context_store import ContextStore
 from .coordinator import YvwConfigEntry, YvwCoordinator
+from .exceptions import YvwAuthError, YvwError
 from .probe import ProbeStore
 from .schedule_store import ScheduleStore
 
@@ -63,6 +64,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     if portal_tz is None:  # pragma: no cover - the tz database always has this
         raise RuntimeError(f"Unknown timezone {PORTAL_TIMEZONE}")
 
+    api = YvwApi(client, portal_tz)
+    meter_serial = await _async_current_meter_serial(hass, entry, api)
+
     probe = ProbeStore(hass)
     await probe.async_load()
 
@@ -72,9 +76,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
     coordinator = YvwCoordinator(
         hass,
         entry,
-        YvwApi(client, portal_tz),
+        api,
         account_id=entry.data[CONF_ACCOUNT_ID],
-        meter_serial=entry.data[CONF_METER_SERIAL],
+        meter_serial=meter_serial,
         address=entry.data[CONF_ADDRESS],
         portal_tz=portal_tz,
         probe=probe,
@@ -93,6 +97,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_current_meter_serial(
+    hass: HomeAssistant, entry: YvwConfigEntry, api: YvwApi
+) -> str:
+    """Return the serial of the meter the account currently has.
+
+    The serial kept at setup is only a starting point. When Yarra Valley Water
+    replaces a meter (a digital meter going in for a mechanical one, say) the
+    account gets a new serial, and the portal answers every usage request for
+    the old one with "Not available" from then on, however the window is cut.
+    So the account is asked each time the entry is set up, and a change is
+    followed and written back to the entry.
+
+    If the portal cannot be reached the kept serial is used; the first refresh
+    will report the outage in the usual way.
+    """
+    kept: str = entry.data[CONF_METER_SERIAL]
+    try:
+        site = await api.async_get_account(entry.data[CONF_ACCOUNT_ID])
+    except YvwAuthError:
+        raise
+    except YvwError as err:
+        _LOGGER.debug("Could not check the meter serial with the portal (%s); using %s", err, kept)
+        return kept
+    if not site.meter_serial or site.meter_serial == kept:
+        return kept
+    _LOGGER.warning(
+        "The meter on account %s is now %s (was %s); following the new meter",
+        entry.data[CONF_ACCOUNT_ID],
+        site.meter_serial,
+        kept,
+    )
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_METER_SERIAL: site.meter_serial}
+    )
+    return site.meter_serial
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: YvwConfigEntry) -> bool:

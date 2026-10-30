@@ -25,6 +25,7 @@ from .const import (
     CONF_CATCHUP_FROM_HOUR,
     CONF_CATCHUP_HOURS,
     CONF_KEEPALIVE_MINUTES,
+    CONF_METER_SERIAL,
     CONF_PROBE_ENABLED,
     CONF_PROBE_STEP_MINUTES,
     DEFAULT_ADAPTIVE_START,
@@ -595,6 +596,9 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
         except YvwError as err:
             raise UpdateFailed(str(err)) from err
 
+        if not readings:
+            readings = await self._async_readings_after_meter_check(start_date, yesterday)
+
         # A successful poll proves the session is healthy again, and counts as
         # contact for the purposes of the idle clock.
         self._async_set_session_dead(False)
@@ -620,6 +624,37 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
             self.update_interval,
         )
         return data
+
+    async def _async_readings_after_meter_check(
+        self, start_date: date, end_date: date
+    ) -> list[UsageReading]:
+        """Re-fetch with the account's current meter if ours has been replaced.
+
+        An empty window is what the portal gives for a meter that is no longer
+        on the account, so before accepting it the account is asked which meter
+        it has now. A new serial is adopted and written back to the entry.
+        """
+        try:
+            site = await self.api.async_get_account(self.account_id)
+        except YvwError as err:
+            _LOGGER.debug("Could not check the meter serial with the portal: %s", err)
+            return []
+        if not site.meter_serial or site.meter_serial == self.meter_serial:
+            return []
+        _LOGGER.warning(
+            "The meter on account %s is now %s (was %s); following the new meter",
+            self.account_id,
+            site.meter_serial,
+            self.meter_serial,
+        )
+        self.meter_serial = site.meter_serial
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data={**self.config_entry.data, CONF_METER_SERIAL: site.meter_serial},
+        )
+        return await self.api.async_get_hourly_usage(
+            self.account_id, self.meter_serial, start_date, end_date
+        )
 
     async def _async_learn_from(self, data: YvwData) -> None:
         """Move tomorrow's start based on how long today's readings took.

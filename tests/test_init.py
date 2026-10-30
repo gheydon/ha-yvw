@@ -14,7 +14,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
-from custom_components.yvw.api import UsageReading
+from custom_components.yvw.api import AccountInfo, UsageReading
 from custom_components.yvw.const import (
     CONF_ACCOUNT_ID,
     CONF_ADDRESS,
@@ -53,9 +53,14 @@ def readings() -> list[UsageReading]:
     ]
 
 
-async def _setup(hass: HomeAssistant, config_entry: MockConfigEntry) -> AsyncMock:
+async def _setup(
+    hass: HomeAssistant, config_entry: MockConfigEntry, meter: str = METER
+) -> AsyncMock:
     config_entry.add_to_hass(hass)
     api = AsyncMock()
+    api.async_get_account.return_value = AccountInfo(
+        account_id=ACCOUNT, address=ADDRESS, meter_serial=meter, has_usage=True
+    )
     api.async_get_hourly_usage.return_value = readings()
     api.async_ping.return_value = None
     with (
@@ -156,3 +161,40 @@ async def test_removing_an_entry_forgets_its_measurement(
     fresh = ProbeStore(hass)
     await fresh.async_load()
     assert fresh.get(config_entry.entry_id).survived_minutes == 0
+
+
+async def test_setup_follows_a_replaced_meter(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """A meter swap gives the account a new serial; the old one is never served again."""
+    config_entry = entry()
+    api = await _setup(hass, config_entry, meter="YAW0000002")
+
+    assert config_entry.data[CONF_METER_SERIAL] == "YAW0000002"
+    api.async_get_hourly_usage.assert_awaited()
+    assert api.async_get_hourly_usage.await_args.args[1] == "YAW0000002"
+    assert config_entry.state is ConfigEntryState.LOADED
+
+
+async def test_setup_keeps_the_meter_when_the_portal_is_unreachable(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Not being able to ask is no reason to forget the meter that was working."""
+    from custom_components.yvw.exceptions import YvwCannotConnect
+
+    config_entry = entry()
+    config_entry.add_to_hass(hass)
+    api = AsyncMock()
+    api.async_get_account.side_effect = YvwCannotConnect("down")
+    api.async_get_hourly_usage.return_value = readings()
+    api.async_ping.return_value = None
+    with (
+        patch("custom_components.yvw.YvwAuraClient"),
+        patch("custom_components.yvw.YvwApi", return_value=api),
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+    await async_wait_recording_done(hass)
+
+    assert config_entry.data[CONF_METER_SERIAL] == METER
+    assert api.async_get_hourly_usage.await_args.args[1] == METER
