@@ -22,7 +22,7 @@ class YvwInvalidAuth(YvwError):
 
 
 class YvwInvalidCode(YvwError):
-    """The supplied SMS verification code was rejected."""
+    """The supplied verification code was rejected."""
 
 
 class YvwApiError(YvwError):

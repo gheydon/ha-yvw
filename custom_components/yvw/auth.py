@@ -2,7 +2,8 @@
 
 The portal has no OAuth and no API credentials: signing in means replaying what
 the browser does. That is a password post followed by a verification code sent
-by SMS, so it can only be completed with the user present. What comes out is a
+by text message, email or an authenticator app depending on the account, so
+it can only be completed with the user present. What comes out is a
 session cookie, and that is the only thing worth keeping — the password is used
 once here and never stored.
 """
@@ -109,6 +110,76 @@ def page_message(html: str) -> str | None:
         if 8 < len(collapsed) <= 200 and wanted.search(collapsed):
             return collapsed
     return None
+
+
+# How to say each channel the portal might name. Only "sms" has been seen in a
+# captured sign-in; the rest are the obvious spellings, which cost nothing if
+# the portal never uses them because an unrecognised value falls through to the
+# portal's own word rather than being guessed at.
+MFA_CHANNELS = {
+    "sms": "sent by text message",
+    "email": "sent by email",
+    "totp": "from your authenticator app",
+    "authenticator": "from your authenticator app",
+}
+
+# The paragraph above the code boxes, which names where the code went. The
+# masked target sits in a span of its own inside the sentence, so the text is
+# flattened before this is applied rather than matched against the markup.
+_CODE_DESTINATION_RE = re.compile(r"code sent to\s+(?P<destination>.+)", re.IGNORECASE)
+_PARAGRAPH_RE = re.compile(r"(?is)<p\b[^>]*>(.*?)</p>")
+
+
+def _flatten(html: str) -> str:
+    """Return the text of a fragment, with its inline tags closed up.
+
+    Tags become spaces rather than line breaks here: the portal wraps the
+    masked destination in its own span mid-sentence, and breaking at tags would
+    split the sentence off from the very part worth reading.
+    """
+    return " ".join(unescape(re.sub(r"(?s)<[^>]+>", " ", html)).split())
+
+
+def code_destination(html: str | None) -> str | None:
+    """Return where the portal says it sent the code, masked as it masked it.
+
+    The portal shows the account's own target — the last digits of a mobile
+    number, or an address — which tells the user which phone or inbox to look
+    at. Only its wording for a text message has been captured, so a page that
+    phrases it any other way simply yields nothing rather than a wrong guess.
+    """
+    if not html:
+        return None
+
+    for fragment in _PARAGRAPH_RE.findall(html):
+        match = _CODE_DESTINATION_RE.search(_flatten(fragment))
+        if not match:
+            continue
+        # The trailing stop belongs to the portal's sentence, not the address.
+        destination = match.group("destination").strip().rstrip(".").strip()
+        if destination and len(destination) <= 80:
+            return destination
+    return None
+
+
+def describe_mfa_channel(mfa_type: str | None, destination: str | None = None) -> str:
+    """Return how to say where the code went, ready to follow "verification code".
+
+    The portal reports which channel it used and, on the code page, the masked
+    target it used. Accounts have been reported using email and an authenticator
+    app as well as a text message, so naming the wrong one sends people looking
+    in the wrong place, and an empty string leaves a sentence that simply does
+    not say.
+    """
+    cleaned = " ".join(mfa_type.split()).lower() if mfa_type else ""
+    phrase = MFA_CHANNELS.get(cleaned, f"sent by {cleaned}") if cleaned else ""
+
+    target = " ".join(destination.split()) if destination else ""
+    # A code waiting in an authenticator app was not sent anywhere, so a
+    # destination alongside one would be describing something else.
+    if target and (not phrase or phrase.startswith("sent")):
+        return f" {phrase} to {target}" if phrase else f" sent to {target}"
+    return f" {phrase}" if phrase else ""
 
 
 def describe_form(html: str) -> str:
@@ -246,6 +317,12 @@ class YvwLogin:
         self._session = session
         self._code_page_url: str | None = None
         self._code_page_html: str | None = None
+        self._mfa_type: str | None = None
+
+    @property
+    def mfa_type(self) -> str | None:
+        """Return the channel the portal said it sent the code by."""
+        return self._mfa_type
 
     @property
     def code_page_url(self) -> str | None:
@@ -309,6 +386,7 @@ class YvwLogin:
         if not page_url:
             # No verification step; the session cookie should already be set.
             self._code_page_url = None
+            self._mfa_type = None
             return None
 
         # A relative path without a leading slash would resolve against the bare
@@ -324,8 +402,13 @@ class YvwLogin:
         if not await self._async_load_code_page():
             # The portal completed the sign-in without asking for a code.
             self._code_page_url = None
+            self._mfa_type = None
             return None
-        return result.get("mfaType")
+
+        # Remote input, so anything but a string is treated as nothing said.
+        mfa_type = result.get("mfaType")
+        self._mfa_type = mfa_type if isinstance(mfa_type, str) else None
+        return self._mfa_type
 
     async def async_resend_code(self) -> None:
         """Ask the portal to send another verification code."""

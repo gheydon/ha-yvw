@@ -14,7 +14,8 @@ Requires a digital meter. If the Usage page of
 [MyAccount](https://myaccount.yvw.com.au/) shows you an hourly chart, you have
 one.
 
-You sign in once with your MyAccount email, password and the code they text you.
+You sign in once with your MyAccount email, password and the verification code
+they send you.
 **Your password is never saved** — only the session that sign-in produces, which
 is what every later request uses. See [What is stored](#what-is-stored).
 
@@ -63,8 +64,10 @@ Or, without either of them, copy `custom_components/yvw` into your
 Or: **Settings → Devices & services → Add integration → Yarra Valley Water.**
 
 1. Enter your MyAccount email and password.
-2. Enter the verification code Yarra Valley Water texts you. Each code works
-   once, so use the newest message.
+2. Enter the verification code Yarra Valley Water sends you. The form repeats
+   what the portal says about where it went — the channel your MyAccount uses,
+   and the masked number or address it went to. Each code works once, so use
+   the newest one.
 3. Choose the property to follow, if your login covers more than one.
 
 Properties are read from the portal, the same way its own account switcher does,
@@ -79,15 +82,15 @@ portal's own sign-in, and discarded the moment that request returns. They are
 not written to the config entry, not written to disk, and not kept in memory
 after setup finishes.
 
-The same goes for the SMS code: it is used once to complete the verification
-step and then discarded.
+The same goes for the verification code: it is used once to complete that step
+and then discarded.
 
 What sign-in produces is a **session**, and that session is the only credential
 kept. From that point on it is the only thing used to talk to Yarra Valley
 Water — every reading, and every keep-alive, is that session and nothing else.
 The integration cannot sign itself in again, by design and by necessity: the
-portal issues a fresh SMS code on every sign-in, so a stored password would buy
-nothing anyway.
+portal issues a fresh verification code on every sign-in, so a stored password
+would buy nothing anyway.
 
 The config entry holds exactly this:
 
@@ -284,8 +287,8 @@ The event carries `count`, `litres`, `first_hour`, `last_hour`, `statistic_id`,
 the interval, in local time.
 
 A `yvw_auth_failed` event fires when the session lapses. Getting it back needs a
-person and an SMS code, so it is worth being told rather than noticing later
-that readings stopped:
+person and a verification code, so it is worth being told rather than noticing
+later that readings stopped:
 
 ```yaml
 automation:
@@ -327,7 +330,7 @@ portal without complaint, so the default is to touch it every hour: comfortably
 inside what is proven, at a sixth of the requests the original guess made.
 
 Losing the session matters more than the request count, because getting it back
-needs a person and an SMS code. So the integration also watches that the
+needs a person and a verification code. So the integration also watches that the
 keep-alive is *running*: a loop that has stopped looks exactly like a healthy one
 until the readings quietly stop, which is worth knowing about promptly. If the
 portal has not been touched in well over the interval, that is reported as a
@@ -491,7 +494,7 @@ what follows is a complaint about the portal, which does its job well. Each item
 would simply let us stop working around it.
 
 **Offer OAuth 2.0 as an authentication method.** Today the only way in is to
-post a password to the site's own sign-in and then complete an SMS verification
+post a password to the site's own sign-in and then complete a verification
 step, because that is what the website does. That means a person has to be
 present for every sign-in, and it means software holding a session cookie that
 is indistinguishable from a browser's. An authorisation-code flow with a
@@ -596,7 +599,7 @@ This integration does not want to know anything about you.
   disabled by default — simply not written.
 - **Your readings stay in your Home Assistant.** They go into your own recorder
   database and nowhere else.
-- **Your password is never stored**, and the SMS code is used once and
+- **Your password is never stored**, and the verification code is used once and
   discarded. See [What is stored](#what-is-stored).
 - **Nothing is collected from you by the author.** No usage counts, no install
   pings, no identifiers. If you open an issue, you choose what to put in it.

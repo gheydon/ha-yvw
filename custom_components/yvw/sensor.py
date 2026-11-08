@@ -122,7 +122,7 @@ class SessionStatusSensor(YvwEntity, SensorEntity):
     """Whether the portal session is usable, and the story around it.
 
     Whether the sign-in still works — when it was established, how old it is,
-    and when it lapsed if it has. Losing a session needs a person and an SMS
+    and when it lapsed if it has. Losing a session needs a person and a verification
     code, so it is worth being able to see at a glance rather than inferring it
     from readings that stopped.
     """

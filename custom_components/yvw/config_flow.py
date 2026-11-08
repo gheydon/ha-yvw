@@ -1,7 +1,7 @@
 """Config flow for Yarra Valley Water.
 
 Signing in mirrors the portal: an email and password, then a verification code
-sent by SMS. The credentials are used once, here, to obtain a session cookie and
+the portal sends. The credentials are used once, here, to obtain a session cookie and
 are never written to the config entry — the portal demands a fresh code on every
 sign-in, so storing a password would buy nothing.
 """
@@ -38,7 +38,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import AccountInfo, AccountSummary, YvwApi
 from .aura import YvwAuraClient
-from .auth import CODE_LENGTH, YvwLogin
+from .auth import CODE_LENGTH, YvwLogin, code_destination, describe_mfa_channel
 from .const import (
     CONF_ACCOUNT_ID,
     CONF_ADAPTIVE_START,
@@ -114,6 +114,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         self._summaries: list[AccountSummary] = []
         self._site: AccountInfo | None = None
         self._code_error: str | None = None
+        self._mfa_type: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Collect the portal credentials."""
@@ -123,7 +124,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
             session = async_create_clientsession(self.hass)
             self._login = YvwLogin(session)
             try:
-                await self._login.async_submit_credentials(
+                self._mfa_type = await self._login.async_submit_credentials(
                     user_input[CONF_USERNAME], user_input[CONF_PASSWORD]
                 )
             except YvwInvalidAuth:
@@ -142,7 +143,7 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
 
     async def async_step_mfa(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Collect the verification code the portal sent by SMS."""
+        """Collect the verification code, however the portal chose to send it."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -170,12 +171,20 @@ class YvwConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error verifying the YVW code")
                 errors["base"] = "unknown"
 
+        # Read each time the form is shown: a re-send fetches the page again,
+        # and the portal could name a different target on it.
+        destination = code_destination(self._login.code_page_html) if self._login else None
+
         return self.async_show_form(
             step_id="mfa",
             data_schema=STEP_MFA_SCHEMA,
             errors=errors,
             description_placeholders={
                 "digits": str(CODE_LENGTH),
+                # The portal picks the channel per account, so it is the only
+                # thing that knows whether to look at a phone, an inbox or an
+                # authenticator app, and which of them.
+                "channel": describe_mfa_channel(self._mfa_type, destination),
                 "detail": self._code_error or "",
             },
         )
@@ -348,7 +357,7 @@ class YvwOptionsFlow(OptionsFlow):
 
     The portal does not publish its idle timeout. A shorter interval is safer
     but talks to Yarra Valley Water more often; a longer one is quieter but
-    risks the session lapsing, which costs another SMS code. The right value is
+    risks the session lapsing, which costs another verification code. The right value is
     found by experiment, so it is an option rather than a constant.
     """
 

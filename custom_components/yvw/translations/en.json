@@ -19,7 +19,7 @@
       },
       "mfa": {
         "title": "Enter your code",
-        "description": "Yarra Valley Water has sent a {digits}-digit verification code to your phone. Each code can only be used once, so use the most recent message. If it has not arrived, tick 'Send a new code' and submit to have another one sent. {detail}",
+        "description": "Enter the {digits}-digit Yarra Valley Water verification code{channel}. Each code can only be used once, so use the most recent one. If it has not arrived, tick 'Send a new code' and submit to have another one sent. {detail}",
         "data": {
           "code": "Verification code",
           "resend": "Send a new code"
@@ -43,7 +43,7 @@
     "error": {
       "cannot_connect": "Could not reach the Yarra Valley Water portal.",
       "invalid_auth": "That email address or password was not accepted.",
-      "invalid_code": "That verification code was not accepted. Codes can only be used once, so check you are using the newest message, or request a new code.",
+      "invalid_code": "That verification code was not accepted. Codes can only be used once, so check you are using the newest one, or request a new code.",
       "unknown": "Something went wrong signing in. Check the logs for details.",
       "code_required": "Enter the verification code, or tick 'Send a new code'.",
       "code_resent": "A new code has been sent. Enter it below.",
@@ -97,7 +97,7 @@
         },
         "data_description": {
           "catchup_from_hour": "Where to begin looking for yesterday's readings before anything has been learned. Once a few mornings have been watched, the learned time is used instead unless learning is switched off.",
-          "keepalive_minutes": "Minutes between touching the portal so the sign-in does not lapse. A session has been measured surviving two hours untouched. Lower is safer; higher is quieter but risks needing a new SMS code.",
+          "keepalive_minutes": "Minutes between touching the portal so the sign-in does not lapse. A session has been measured surviving two hours untouched. Lower is safer; higher is quieter but risks needing a new verification code.",
           "probe_session_timeout": "Stretches the gap a little further each time until a session does lapse, which finds the real limit. It ends by costing one verification code, then settles on a safe interval and switches itself off.",
           "probe_step_minutes": "How much longer each measurement waits than the last one that survived. Larger steps reach an answer sooner but bracket it more loosely.",
           "include_session_in_diagnostics": "Puts your live sign-in into the diagnostics download in the clear, so anyone who reads that file can use your account until the session lapses. Leave off unless someone is helping you debug, and never post such a file publicly.",

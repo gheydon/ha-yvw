@@ -47,6 +47,9 @@ def _login(**kwargs) -> AsyncMock:
     login.async_finish.return_value = "session-value"
     login.session_cookies = {"sid": "session-value", "sid_Client": "paired-value"}
     login.code_page_url = "https://myaccount.yvw.com.au/myaccount/apex/MALoginFlowVFPage"
+    # A real login holds the page or nothing; the default mock attribute would
+    # be neither, and the form reads this to name where the code went.
+    login.code_page_html = None
     for key, value in kwargs.items():
         setattr(login, key, value)
     return login
@@ -151,6 +154,49 @@ async def test_a_rejected_code_is_reported(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "mfa"
     assert result["errors"] == {"base": "invalid_code"}
+
+
+async def test_the_code_form_names_the_channel_the_portal_used(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Accounts differ, so the form has to say where this one's code went."""
+    login = _login()
+    login.async_submit_code.side_effect = YvwInvalidCode("nope")
+
+    result = await _run(hass, login, _api())
+
+    assert result["step_id"] == "mfa"
+    assert result["description_placeholders"]["channel"] == " sent by text message"
+
+
+async def test_the_code_form_names_the_target_the_page_showed(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Which phone was texted is the question a masked number answers."""
+    login = _login()
+    login.code_page_html = (
+        "<p>Please type the verification code sent to "
+        '<span class="font-family-bold">*******506.</span></p>'
+    )
+    login.async_submit_code.side_effect = YvwInvalidCode("nope")
+
+    result = await _run(hass, login, _api())
+
+    placeholders = result["description_placeholders"]
+    assert placeholders["channel"] == " sent by text message to *******506"
+
+
+async def test_the_code_form_names_an_inbox_when_that_is_what_was_used(
+    recorder_mock: Recorder, hass: HomeAssistant, custom_integration
+) -> None:
+    """Sending people to a phone they were never texted on wastes the sign-in."""
+    login = _login()
+    login.async_submit_credentials.return_value = "EMAIL"
+    login.async_submit_code.side_effect = YvwInvalidCode("nope")
+
+    result = await _run(hass, login, _api())
+
+    assert result["description_placeholders"]["channel"] == " sent by email"
 
 
 async def test_the_account_number_is_asked_for_when_undiscoverable(

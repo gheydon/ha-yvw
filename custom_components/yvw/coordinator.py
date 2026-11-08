@@ -297,7 +297,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def async_start_keepalive(self) -> None:
         """Begin pinging the portal so the session does not idle out.
 
-        Losing the session costs the user an SMS round trip, so this runs far
+        Losing the session costs the user a verification round trip, so this runs far
         more often than the data poll. The interval is an option because the
         portal's real idle timeout is not published and is worth measuring.
         """
@@ -772,7 +772,7 @@ class YvwCoordinator(DataUpdateCoordinator[YvwData]):
     def _async_fire_auth_failed(self, detected_by: str) -> None:
         """Announce that the session has lapsed and a person is needed.
 
-        Recovering means signing in again with an SMS code, so this is worth
+        Recovering means signing in again with a verification code, so this is worth
         acting on rather than waiting to notice missing readings.
         """
         self._async_fire(

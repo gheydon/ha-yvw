@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from custom_components.yvw.api import account_ids_in
-from custom_components.yvw.auth import build_code_form, find_client_redirect
+from custom_components.yvw.auth import (
+    build_code_form,
+    code_destination,
+    describe_mfa_channel,
+    find_client_redirect,
+)
 from custom_components.yvw.exceptions import YvwApiError, YvwInvalidCode
 
 # Reduced from a real verification page. The portal renders a mobile block
@@ -444,3 +449,112 @@ def test_the_ajax_parameters_are_posted_instead_of_the_button_label() -> None:
     assert payload["mfapage:theForm:page:j_id73:j_id82"] == "mfapage:theForm:page:j_id73:j_id82"
     assert payload["mfapage:theForm:page:firstHidden"] == "3"
     assert payload["mfapage:theForm:page:sixthHidden"] == "4"
+
+
+@pytest.mark.parametrize(
+    ("mfa_type", "expected"),
+    [
+        ("SMS", " sent by text message"),
+        ("sms", " sent by text message"),
+        ("EMAIL", " sent by email"),
+        ("TOTP", " from your authenticator app"),
+        ("authenticator", " from your authenticator app"),
+    ],
+)
+def test_the_channel_the_portal_named_is_spelled_out(mfa_type: str, expected: str) -> None:
+    """Only the portal knows which channel an account uses."""
+    assert describe_mfa_channel(mfa_type) == expected
+
+
+@pytest.mark.parametrize("mfa_type", [None, "", "   "])
+def test_saying_nothing_beats_naming_the_wrong_channel(mfa_type: str | None) -> None:
+    """With no channel named the sentence has to stay silent about where to look."""
+    assert describe_mfa_channel(mfa_type) == ""
+
+
+def test_an_unfamiliar_channel_is_passed_through() -> None:
+    """A channel nobody has seen still tells the user more than a guess would."""
+    assert describe_mfa_channel("Voice Call") == " sent by voice call"
+
+
+async def test_the_channel_is_kept_for_the_code_step(monkeypatch) -> None:
+    """The code form is shown long after doLogin answered, so it has to be kept."""
+    session = FakeSession()
+    login, _ = await _login_with(monkeypatch, session)
+
+    assert login.mfa_type == "SMS"
+
+
+async def test_no_channel_is_kept_when_no_code_was_sent(monkeypatch) -> None:
+    """A sign-in that skipped verification has no channel to report."""
+    session = FakeSession()
+    login, _ = await _login_with(monkeypatch, session, result={"pageUrl": None})
+
+    assert login.mfa_type is None
+
+
+async def test_a_channel_that_is_not_text_is_ignored(monkeypatch) -> None:
+    """The field is remote input, so a surprise type must not reach the wording."""
+    session = FakeSession()
+    login, mfa_type = await _login_with(
+        monkeypatch, session, result={**DO_LOGIN_OK, "mfaType": {"unexpected": True}}
+    )
+
+    assert mfa_type is None
+    assert login.mfa_type is None
+    assert describe_mfa_channel(login.mfa_type) == ""
+
+
+def test_the_masked_destination_is_read_from_the_page() -> None:
+    """Which phone or inbox to check is the one thing only the page knows."""
+    assert code_destination(CODE_PAGE) == "*******506"
+
+
+def test_the_mobile_fields_are_not_mistaken_for_the_code_fields() -> None:
+    """The portal renders a mobile set first and strips it by script.
+
+    Both sets are in the markup a client parses, and posting the digits into
+    the block a desktop browser would have removed is not what the page does.
+    """
+    payload = build_code_form(CODE_PAGE, "123456")
+
+    assert payload["mfapage:theForm:page:firstHidden"] == "1"
+    assert all("MobileHidden" not in name or payload[name] == "" for name in payload)
+
+
+def test_an_address_keeps_the_dots_in_it() -> None:
+    """Stopping at the first full stop would cut an email address in half."""
+    page = (
+        '<p>Please type the verification code sent to '
+        '<span class="font-family-bold">g****@heydon.com.au.</span></p>'
+    )
+
+    assert code_destination(page) == "g****@heydon.com.au"
+
+
+def test_a_page_that_does_not_say_where_yields_nothing() -> None:
+    """Only the wording for a text message has been captured."""
+    page = '<p>Open your authenticator app and enter the code it shows.</p>'
+
+    assert code_destination(page) is None
+
+
+@pytest.mark.parametrize("html", [None, "", "<p></p>", "<p>code sent to </p>"])
+def test_nothing_to_read_is_not_an_error(html: str | None) -> None:
+    """A page shape nobody has seen must not stop the sign-in."""
+    assert code_destination(html) is None
+
+
+def test_the_channel_and_the_destination_read_as_one_sentence() -> None:
+    """Both are known on the code page, and together they say where to look."""
+    assert describe_mfa_channel("SMS", "*******506") == " sent by text message to *******506"
+
+
+def test_a_destination_alone_still_says_where() -> None:
+    """The page names the target even when doLogin named no channel."""
+    assert describe_mfa_channel(None, "*******506") == " sent to *******506"
+
+
+def test_an_authenticator_app_is_not_given_a_destination() -> None:
+    """A code waiting in an app was not sent anywhere to be read off."""
+    assert describe_mfa_channel("TOTP", "*******506") == " from your authenticator app"

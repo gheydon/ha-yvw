@@ -4,7 +4,7 @@ Every request needs a framework descriptor and a CSRF token, and the only way to
 obtain them fresh is to load a portal page. A restart therefore begins with
 nothing in hand, and if that page load bounces to the login screen — which it
 does whenever the portal will not accept the cookies from a client it has not
-seen before — there is no way forward but asking the user for an SMS code.
+seen before — there is no way forward but asking the user for a new code.
 
 The token does not expire on its own: it carries ``exp: 0``, and lives as long
 as the session behind it. So keeping the last one that worked lets a restart

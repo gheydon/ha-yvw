@@ -161,7 +161,7 @@ UPDATE_INTERVAL = timedelta(hours=12)
 # the real portal, a session survived a 120 minute idle gap without complaint,
 # so an hour is the default: comfortably inside what is proven, and a sixth of
 # the requests the original ten minute guess made. Losing a session costs the
-# user an SMS code, so the margin is deliberate.
+# user a verification code, so the margin is deliberate.
 DEFAULT_KEEPALIVE_MINUTES = 60
 MIN_KEEPALIVE_MINUTES = 1
 
@@ -229,7 +229,8 @@ STATUS_NOT_AVAILABLE = "Not available"
 EVENT_NEW_READINGS = f"{DOMAIN}_new_readings"
 
 # Fired when the portal session lapses. Re-authenticating needs a person and an
-# SMS code, so it is worth being able to notify rather than waiting to notice.
+# verification code, so it is worth being able to notify rather than waiting
+# to notice.
 EVENT_AUTH_FAILED = f"{DOMAIN}_auth_failed"
 
 # Fired after every keep-alive attempt, whatever came of it, so the run can be
