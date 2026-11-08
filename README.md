@@ -223,8 +223,15 @@ them.
 
 Use that statistic, not the sensors. The sensors exist to show you the latest
 figures at a glance; the statistic is the complete hourly history. Adding both
-would count the same water twice. Costs come from the tariff you configure on
-that dashboard — the portal's own billing figures are not used.
+would count the same water twice.
+
+The dashboard will show you water used, not what it cost. Home Assistant only
+offers a price on a source that is an entity, and these readings are long-term
+statistics written straight into the database, so the price fields in the water
+source dialog stay greyed out. Costing them means a second statistic holding the
+cost, which this integration does not write yet — see
+[issue #4](https://github.com/gheydon/ha-yvw/issues/4). The portal's own billing
+figures are not used either way.
 
 ## Sensors
 
