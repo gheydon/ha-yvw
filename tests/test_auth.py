@@ -2,34 +2,28 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from custom_components.yvw.api import account_ids_in
 from custom_components.yvw.auth import build_code_form, find_client_redirect
 from custom_components.yvw.exceptions import YvwApiError, YvwInvalidCode
 
-CODE_PAGE = """
-<form id="mfapage:theForm" method="post" action="/myaccount/apex/MALoginFlowVFPage">
-  <input type="hidden" name="mfapage:theForm" value="mfapage:theForm" />
-  <input type="hidden" name="com.salesforce.visualforce.ViewState" value="STATE" />
-  <input type="hidden" name="com.salesforce.visualforce.ViewStateMAC" value="MAC" />
-  <input type="hidden" name="mfapage:theForm:page:firstHidden:hidden" value="" />
-  <input type="hidden" name="mfapage:theForm:page:secondHidden:hidden" value="" />
-  <input type="hidden" name="mfapage:theForm:page:thirdHidden:hidden" value="" />
-  <input type="hidden" name="mfapage:theForm:page:fourthHidden:hidden" value="" />
-  <input type="hidden" name="mfapage:theForm:page:fifthHidden:hidden" value="" />
-  <input type="hidden" name="mfapage:theForm:page:sixthHidden:hidden" value="" />
-  <input type="submit" name="mfapage:theForm:page:j_id73:j_id82:submit" value="Submit" />
-</form>
-"""
+# Reduced from a real verification page. The portal renders a mobile block
+# first and removes it by script on a desktop theme, so both sets of ordinal
+# fields are present in the markup a client sees, and only the second set is
+# the one to post. View state values are placeholders; the rest keeps the shape
+# the portal serves, including the masked destination inside its own span.
+CODE_PAGE = (Path(__file__).parent / "fixtures" / "verification_page.html").read_text()
 
 
 def test_code_is_split_across_the_six_digit_fields() -> None:
     """The page takes one digit per field, in order."""
     payload = build_code_form(CODE_PAGE, "123456")
 
-    assert payload["mfapage:theForm:page:firstHidden:hidden"] == "1"
-    assert payload["mfapage:theForm:page:sixthHidden:hidden"] == "6"
+    assert payload["mfapage:theForm:page:firstHidden"] == "1"
+    assert payload["mfapage:theForm:page:sixthHidden"] == "6"
 
 
 def test_visualforce_state_is_echoed_back() -> None:
@@ -39,7 +33,7 @@ def test_visualforce_state_is_echoed_back() -> None:
     assert payload["com.salesforce.visualforce.ViewState"] == "STATE"
     assert payload["com.salesforce.visualforce.ViewStateMAC"] == "MAC"
     # The pressed button identifies the action to Visualforce.
-    assert "mfapage:theForm:page:j_id73:j_id82:submit" in payload
+    assert "mfapage:theForm:page:j_id73:j_id82" in payload
 
 
 def test_generated_field_names_are_not_assumed() -> None:
@@ -48,7 +42,7 @@ def test_generated_field_names_are_not_assumed() -> None:
 
     payload = build_code_form(renamed, "123456")
 
-    assert "mfapage:theForm:page:j_id99:j_id01:submit" in payload
+    assert "mfapage:theForm:page:j_id99:j_id01" in payload
 
 
 @pytest.mark.parametrize("code", ["12345", "1234567", "abcdef", ""])
@@ -195,8 +189,8 @@ async def test_submitting_a_code_does_not_refetch_the_page(monkeypatch) -> None:
     url, posted = session.posts[-1]
     assert "MALoginFlowVFPage" in url
     assert posted["com.salesforce.visualforce.ViewState"] == "STATE"
-    assert posted["mfapage:theForm:page:firstHidden:hidden"] == "1"
-    assert posted["mfapage:theForm:page:sixthHidden:hidden"] == "6"
+    assert posted["mfapage:theForm:page:firstHidden"] == "1"
+    assert posted["mfapage:theForm:page:sixthHidden"] == "6"
 
 
 async def test_resending_reloads_the_page(monkeypatch) -> None:
