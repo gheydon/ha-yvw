@@ -47,9 +47,8 @@ By hand: **Settings → Marketplace** → three-dot menu → **Custom repositori
 
 **Home Assistant 2026.10 or older**
 
-[![Open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gheydon&repository=ha-yvw&category=integration)
-
-By hand: HACS → three-dot menu → **Custom repositories** → add the same URL
+[Open this repository in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=gheydon&repository=ha-yvw&category=integration),
+or by hand: HACS → three-dot menu → **Custom repositories** → add the same URL
 with the same category.
 
 Then install "Yarra Valley Water" and restart Home Assistant.
